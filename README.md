@@ -1,112 +1,146 @@
 # NSE Stock Screener
 
-A Python tool to fetch, validate, and screen NSE-listed stocks for high-momentum setups.  
-Designed to help uncover under-followed stocks with potential to “bloom.”
+A comprehensive **Python-based stock screener** for the **NSE (National Stock Exchange of India)**.  
+This tool is designed to detect unusual trading activity, validate stock tickers, and generate actionable datasets for deeper analysis.
 
 ---
 
-## 🚀 What It Does
+## 🚀 Features
 
-- Fetches stock symbols from NSE (beyond just the big indices).  
-- Validates tickers using Yahoo Finance.  
-- Saves outputs as text/CSV for downstream analysis.  
-- Built to be extended with technical or fundamental filters.
-
----
-
-## 🔍 Why This Exists
-
-The Nifty 500 and other large-cap indices are well-known; many tools focus only there. The opportunity lies in digging deeper — small or mid-cap stocks, or less obvious ones — to find higher-growth potential. This tool gives you a foundation: data + validation + structure.
+- Fetches NSE-listed stock symbols (beyond Nifty indices).
+- Validates tickers using **Yahoo Finance API (yfinance)**.
+- Detects **unusual trading volume** using:
+  - Z-Score based anomaly detection
+  - Rolling volume ratio comparison
+- Supports **multi-indicator confirmation** across:
+  - RSI (Relative Strength Index)
+  - MACD (Moving Average Convergence Divergence)
+  - ADX (Average Directional Index)
+  - ATR (Average True Range)
+  - Volume Profile
+- Saves outputs in **CSV/Text format** for downstream analysis.
+- Modular design: extendable for **fundamental or technical filters**.
+- Backtesting and charting support (CSV-based results).
 
 ---
 
 ## 📂 Project Structure
 
 ```
-
 nse-stock-screener/
 │
-├── src/                   # Python source scripts
-│     └── fetch\_symbols.py  # Main symbol-fetching logic
+├── src/                     # Core Python scripts
+│   ├── fetch_symbols.py      # Fetch NSE symbols
+│   ├── indicators_engine.py  # Compute technical indicators
+│   ├── backtest.py           # Backtesting logic
+│   └── utils.py              # Helper functions
 │
-├── data/                  # Outputs and temporary data
-│     ├── symbols.txt       # Saved symbols
-│     └── temp/             # Temporary files during fetch
+├── scripts/                  # Automation scripts
+│   └── start.bat             # Windows launcher
 │
-├── .gitignore             # Which files/folders to ignore
-├── requirements.txt       # Python dependencies
-└── README.md              # This file
-
-````
+├── data/                     # Output & temporary files
+│   ├── symbols.txt
+│   ├── results/              # Indicator + backtest results
+│   └── temp/
+│
+├── requirements.txt          # Python dependencies
+├── .gitignore                # Git ignored files
+└── README.md                 # Documentation
+```
 
 ---
 
-## 🛠 Setup & Usage
+## ⚡ Installation & Usage
 
-1. Clone the repo:
-   ```bash
-   git clone https://github.com/sandeep-chauhan-self/nse-stock-screener.git
-   cd nse-stock-screener
-    ```
+1. Clone the repository:
 
-2. (Optional but best) Create a virtual environment and activate it:
+```bash
+git clone https://github.com/sandeep-chauhan-self/nse-stock-screener.git
+cd nse-stock-screener
+```
 
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate   # On Windows: venv\Scripts\activate
-   ```
+2. (Recommended) Create a virtual environment:
 
-3. Install requirements:
+```bash
+python -m venv venv
+# On Linux/Mac
+source venv/bin/activate
+# On Windows
+venv\Scripts\activate
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+3. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
 
 4. Run the main script:
 
-   ```bash
-   python src/fetch_symbols.py
-   ```
+```bash
+python src/fetch_symbols.py
+```
 
-5. The symbols will be saved in `data/symbols.txt`.
-   Temporary files (if any) go into `data/temp/`.
+5. Analyze a single stock with the full indicator suite:
 
----
+```bash
+python src/indicators_engine.py --symbol RELIANCE.NS
+```
 
-## ✔️ Validation
-
-* The script picks a small random subset of fetched symbols and checks via Yahoo Finance whether they appear valid.
-* Helps filter out delisted or incorrect tickers.
+6. Results are saved as CSV inside the `data/results/` folder.
 
 ---
 
-## ⚙️ Possible Next Steps / Improvements
+## 📊 Example Output
 
-* Incorporate filters (volume spikes, PE/PB, promoter holding, etc.).
-* Add functionality for technical indicators (RSI, MACD, moving averages).
-* Automate discovering “rising stars”: small-cap stocks rising steadily.
-* Build UI or dashboard for visual exploration.
-* Backtest signals.
-
----
-
-## 🪃 Dependencies
-
-* Python 3.x
-* pandas
-* requests
-* yfinance
-
-(Check `requirements.txt` for exact versions.)
+| Symbol      | RSI  | MACD Signal | ADX | ATR  | Volume Z-Score | Action Signal |
+|-------------|------|-------------|-----|------|----------------|---------------|
+| RELIANCE.NS | 62   | Bullish     | 28  | 15.3 | +2.1           | ✅ Buy Watch  |
+| TCS.NS      | 41   | Bearish     | 19  | 10.8 | -0.7           | ❌ Avoid      |
 
 ---
 
-## 📄 License & Disclaimer
+## 🔮 Roadmap
 
-This repo is provided as-is, for educational or personal use. It **does not** provide investment advice. Always verify data and do your own due diligence before making investment decisions.
+- [ ] Add more **fundamental filters** (PE, PB, ROE, promoter holdings).
+- [ ] Automate **multi-day signal scanning**.
+- [ ] Integrate **plotting/charting** for visual insights.
+- [ ] Deploy as a **Flask/Django dashboard**.
+- [ ] Add **machine learning models** for predictive screening.
 
 ---
 
-## 📬 Feedback & Contribution
+## ⚙️ Dependencies
 
-Ideas, bug reports, or pull requests are welcome. If you've built an interesting filter or module, feel free to contribute!
+- Python 3.8+
+- pandas
+- numpy
+- requests
+- yfinance
+- matplotlib (for charts)
+- ta (technical analysis library)
+
+Check `requirements.txt` for exact versions.
+
+---
+
+## 📜 License & Disclaimer
+
+This project is open-source and provided **for educational & research purposes only**.  
+It does **not constitute financial advice**. Use at your own risk.
+
+---
+
+## 🤝 Contributions
+
+Contributions are welcome!  
+- Fork the repo, implement improvements, and open a pull request.  
+- Report bugs or suggest features via [GitHub Issues](../../issues).  
+
+---
+
+## 👨‍💻 Author
+
+Created and maintained by **Sandeep Chauhan**  
+📌 Focused on financial technology & trading system development.
+
