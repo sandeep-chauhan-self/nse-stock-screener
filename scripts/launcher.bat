@@ -1,7 +1,5 @@
 @echo off
 
-cls
-
 echo ===========================================================
 echo      STOCKS EARLY WARNING SYSTEM - AUTOMATED SEQUENCE
 echo ===========================================================
@@ -11,7 +9,7 @@ echo Welcome to the Stocks Early Warning System!
 echo This tool will automatically perform the following steps:
 echo  1. Clean Repository
 echo  2. Manage Stock Lists
-echo  3. Analyze Stocks
+echo  3. Analyze Stocks (Standard or Enhanced)
 echo.
 echo Processing...
 echo.

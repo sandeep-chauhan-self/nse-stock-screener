@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-cls
 
 echo ===================================================
 echo  STOCK LIST MANAGER - AUTO MODE

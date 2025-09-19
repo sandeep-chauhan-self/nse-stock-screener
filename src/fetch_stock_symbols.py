@@ -506,8 +506,16 @@ def main():
     print("3. FTSE 100 (UK)")
     print("4. All available markets")
     print("5. Custom selection")
+    print("6. Go back to previous menu")
+    print("7. Exit")
     
-    choice = input("\nEnter your choice (1-5): ")
+    choice = input("\nEnter your choice (1-7): ")
+    
+    if choice == '6':
+        return []  # Go back - return empty list
+    elif choice == '7':
+        print("Exiting...")
+        exit(0)
     
     all_symbols = []
     
