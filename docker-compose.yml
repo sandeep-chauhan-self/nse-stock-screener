@@ -1,0 +1,70 @@
+# Docker Compose for NSE Stock Screener Development
+version: '3.8'
+
+services:
+  nse-screener:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nse-screener:latest
+    container_name: nse-stock-screener
+    volumes:
+      # Mount data and output directories for persistence
+      - ./data:/app/data
+      - ./output:/app/output
+      # Mount source code for development (optional)
+      - ./src:/app/src:ro
+    environment:
+      - NSE_SCREENER_ENV=production
+      - PYTHONPATH=/app/src
+    networks:
+      - screener-network
+    # Override default command for specific operations
+    command: ["python", "-m", "src.enhanced_early_warning_system", "--symbols", "RELIANCE,TCS,INFY"]
+    
+  # Optional: Add a development service with source code mounting
+  nse-screener-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nse-screener:latest
+    container_name: nse-screener-dev
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./src:/app/src
+      - ./tests:/app/tests
+    environment:
+      - NSE_SCREENER_ENV=development
+      - PYTHONPATH=/app/src
+    networks:
+      - screener-network
+    command: ["tail", "-f", "/dev/null"]  # Keep container running for development
+    
+  # Optional: Add a testing service
+  nse-screener-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nse-screener:latest
+    container_name: nse-screener-test
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./test-output:/app/test-output
+    environment:
+      - NSE_SCREENER_ENV=test
+      - PYTHONPATH=/app/src
+    networks:
+      - screener-network
+    command: ["python", "-m", "pytest", "tests/", "-v", "--cov=src"]
+
+networks:
+  screener-network:
+    driver: bridge
+
+# Usage:
+# Development: docker-compose up nse-screener-dev
+# Production: docker-compose up nse-screener
+# Testing: docker-compose up nse-screener-test
+# All services: docker-compose up
