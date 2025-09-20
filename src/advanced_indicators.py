@@ -544,12 +544,13 @@ class AdvancedIndicator:
         Returns comprehensive dictionary of all technical indicators
         
         Performance optimized: Includes timing monitoring for batch operations
+        Corporate action aware: Uses auto_adjust=True for proper split/dividend handling
         """
         try:
             # All symbols should already have the .NS suffix
-            # Fetch data
+            # Fetch data with corporate action adjustments - CRITICAL FIX
             ticker = yf.Ticker(symbol)
-            data = ticker.history(period=period)
+            data = ticker.history(period=period, auto_adjust=True)
             
             if data is None or len(data) < 50 or data.empty:
                 print(f"Insufficient data for {symbol}")

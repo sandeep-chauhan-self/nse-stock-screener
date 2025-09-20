@@ -258,12 +258,13 @@ class AdvancedBacktester:
         Simulate a single trade from entry to exit
         """
         try:
-            # Fetch data for the trade period
+            # Fetch data for the trade period with corporate action adjustments
             start_date = entry_date - timedelta(days=5)  # Buffer for stop loss calculation
             end_date = entry_date + timedelta(days=self.config.max_holding_days + 10)
             
             ticker = yf.Ticker(symbol)
-            data = ticker.history(start=start_date, end=end_date)
+            # CRITICAL FIX: Add auto_adjust=True for corporate action handling
+            data = ticker.history(start=start_date, end=end_date, auto_adjust=True)
             
             if data.empty or len(data) < 10:
                 return None
@@ -423,7 +424,8 @@ class AdvancedBacktester:
                 # Simulate the trade continuation
                 try:
                     ticker = yf.Ticker(symbol)
-                    recent_data = ticker.history(start=trade.entry_date, end=current_date + timedelta(days=1))
+                    # CRITICAL FIX: Add auto_adjust=True for corporate action handling
+                    recent_data = ticker.history(start=trade.entry_date, end=current_date + timedelta(days=1), auto_adjust=True)
                     
                     if not recent_data.empty and len(recent_data) > 0:
                         current_price = recent_data['Close'].iloc[-1]
@@ -530,7 +532,8 @@ class AdvancedBacktester:
         for symbol, trade in active_positions.items():
             try:
                 ticker = yf.Ticker(symbol)
-                final_data = ticker.history(start=trade.entry_date, end=end_date + timedelta(days=1))
+                # CRITICAL FIX: Add auto_adjust=True for corporate action handling
+                final_data = ticker.history(start=trade.entry_date, end=end_date + timedelta(days=1), auto_adjust=True)
                 if not final_data.empty:
                     final_price = final_data['Close'].iloc[-1]
                     
