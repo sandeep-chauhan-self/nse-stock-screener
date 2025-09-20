@@ -3,10 +3,11 @@ Graceful Error Handling and Batch Processing for NSE Stock Screener
 Implements per-symbol error isolation and robust batch processing
 """
 
-import time
-from typing import List, Dict, Any, Optional, Callable, Iterator
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+import time
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Dict, Any, Optional, Callable, Iterator
 import traceback
 
 from .logging_config import get_logger, operation_context

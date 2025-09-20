@@ -1,12 +1,14 @@
+import logging
 """
 Enhanced Stock Screening System Launcher
 Simple launcher script for the upgraded analysis system
 """
 
+from pathlib import Path
 import os
 import sys
+
 import subprocess
-from pathlib import Path
 
 def main():
     print("🚀 ENHANCED STOCK SCREENING SYSTEM")
@@ -89,7 +91,7 @@ def main():
     except KeyboardInterrupt:
         print("\n⏹️ Cancelled by user")
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        logging.error(f"\n❌ Error: {e}")
 
 def run_quick_demo(src_dir):
     """Run quick demo with default stocks"""

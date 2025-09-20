@@ -10,13 +10,14 @@ Requirements 3.9 Implementation: Missing corporate actions & adjusted price hand
 - Standardizes data fetching across all modules
 """
 
-import yfinance as yf
-import pandas as pd
-import numpy as np
-from typing import Dict, Optional, Tuple, Any
 from datetime import datetime, timedelta
-import logging
 from functools import wraps
+import logging
+
+from typing import Dict, Optional, Tuple, Any
+import numpy as np
+import pandas as pd
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 

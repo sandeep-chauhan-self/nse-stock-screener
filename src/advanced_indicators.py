@@ -33,11 +33,12 @@ except ImportError:
     def fetch_stock_data(symbol, **kwargs):
         import yfinance as yf
         return yf.Ticker(symbol).history(**kwargs)
-import time
 
 # Use yfinance for data fetching
 try:
     import yfinance as yf
+    # Verify yfinance is working
+    pass
 except ImportError:
     logger = logging.getLogger(__name__)
     logger.critical("yfinance not installed. Run: pip install yfinance")

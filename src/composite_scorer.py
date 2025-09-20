@@ -1,13 +1,13 @@
+import logging
 """
 Composite Scoring System
 Implements the probabilistic scoring framework (0-100) with weighted components
 """
 
+from typing import Dict, Any, Tuple, Optional
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Tuple, Optional
 
-# Import shared enums from centralized location
 from .common.enums import MarketRegime, ProbabilityLevel
 from .common.volume_thresholds import VolumeThresholdCalculator, DEFAULT_VOLUME_CONFIG
 
@@ -450,7 +450,7 @@ class CompositeScorer:
                 return MarketRegime.SIDEWAYS
                 
         except Exception as e:
-            print(f"Warning: Error detecting market regime: {e}")
+            logging.error(f"Warning: Error detecting market regime: {e}")
             return MarketRegime.SIDEWAYS
     
     def compute_composite_score(self, indicators: Dict[str, Any], regime: MarketRegime = MarketRegime.SIDEWAYS) -> Dict[str, Any]:

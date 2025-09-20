@@ -1,15 +1,16 @@
+from datetime import datetime, timedelta
+from pathlib import Path
+import argparse
+import logging
 import os
 import sys
 import time
-import argparse
-from datetime import datetime, timedelta
+
 from typing import Dict, List, Any, Optional, Tuple
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from pathlib import Path
-import logging
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 # Import our logging and monitoring infrastructure first
 try:
@@ -32,7 +33,6 @@ except ImportError:
     def start_batch_analysis(symbols): return "mock_session"
     def end_batch_analysis(): return {}
     def track_symbol_analysis(symbol):
-        from contextlib import nullcontext
         return nullcontext()
     def fetch_stock_data(symbol, **kwargs):
         import yfinance as yf
@@ -217,7 +217,7 @@ class EnhancedEarlyWarningSystem:
             return regime
             
         except Exception as e:
-            print(f"⚠️ Error detecting market regime: {e}")
+            logging.error(f"⚠️ Error detecting market regime: {e}")
             return MarketRegime.SIDEWAYS
             
     def analyze_single_stock(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -448,7 +448,7 @@ class EnhancedEarlyWarningSystem:
             return chart_path
             
         except Exception as e:
-            print(f"Error generating enhanced chart for {symbol}: {e}")
+            logging.error(f"Error generating enhanced chart for {symbol}: {e}")
             return None
     
     def save_enhanced_reports(self, categorized_results: Dict[str, List[Dict]], 
@@ -565,13 +565,13 @@ class EnhancedEarlyWarningSystem:
             print(f"Summary report saved: {summary_file}")
             
         except Exception as e:
-            print(f"Error saving reports: {e}")
+            logging.error(f"Error saving reports: {e}")
         
         return saved_files
     
     def run_enhanced_analysis(self) -> Dict[str, Any]:
         """Run the complete enhanced analysis pipeline"""
-        print("🚀 ENHANCED EARLY WARNING SYSTEM")
+        logging.warning("🚀 ENHANCED EARLY WARNING SYSTEM")
         print("=" * 60)
         print(f"Analyzing {len(self.nse_stocks)} stocks with advanced indicators...\n")
         
@@ -805,7 +805,7 @@ class EnhancedEarlyWarningSystem:
             return metrics
             
         except Exception as e:
-            print(f"Error running backtest: {e}")
+            logging.error(f"Error running backtest: {e}")
             return None
 
 def parse_arguments():
@@ -845,7 +845,7 @@ if __name__ == "__main__":
             os.chdir(args.output_dir)
             print(f"Output directory: {os.path.abspath(args.output_dir)}")
         except Exception as e:
-            print(f"Error setting output directory: {e}")
+            logging.error(f"Error setting output directory: {e}")
     
     # Create custom stock list if provided
     custom_stocks = None
@@ -869,11 +869,11 @@ if __name__ == "__main__":
         if args.backtest:
             ews.run_backtest_analysis()
         
-        print("\n✅ Enhanced Early Warning System analysis completed successfully!")
+        logging.warning("\n✅ Enhanced Early Warning System analysis completed successfully!")
         
     except KeyboardInterrupt:
         print("\n⏹️  Analysis interrupted by user")
     except Exception as e:
-        print(f"\n❌ Error running analysis: {e}")
+        logging.error(f"\n❌ Error running analysis: {e}")
         import traceback
         traceback.print_exc()

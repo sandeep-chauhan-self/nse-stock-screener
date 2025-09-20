@@ -1,10 +1,11 @@
 # Test fixtures - Small deterministic datasets for unit testing
 # This file contains carefully crafted test data with known expected outputs
 
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
+
 from typing import Dict, Any
+import numpy as np
+import pandas as pd
 
 def create_test_ohlcv_data() -> pd.DataFrame:
     """

@@ -1,3 +1,4 @@
+import logging
 """
 Path Portability Validation Script for Requirement 3.3
 
@@ -5,12 +6,13 @@ Tests that all path handling is cross-platform compatible and working
 correctly regardless of working directory.
 """
 
-import sys
-import os
-import tempfile
-import shutil
 from pathlib import Path
+import os
+import sys
+
+import shutil
 import subprocess
+import tempfile
 
 
 class PathPortabilityTester:
@@ -71,7 +73,6 @@ class PathPortabilityTester:
         test_name = "Legacy Path Resolution"
         
         try:
-            from src.common.paths import PathManager
             
             pm = PathManager()
             
@@ -104,7 +105,6 @@ class PathPortabilityTester:
         test_name = "Directory Creation"
         
         try:
-            from src.common.paths import PathManager
             
             pm = PathManager()
             
@@ -140,7 +140,6 @@ class PathPortabilityTester:
         test_name = "Working Directory Independence"
         
         try:
-            from src.common.paths import PathManager
             
             # Get original working directory
             original_cwd = os.getcwd()
@@ -185,7 +184,6 @@ class PathPortabilityTester:
             
             # Test importing the fixed modules (this will fail if syntax errors exist)
             try:
-                from src.common.paths import PathManager
                 self.log_result("Import paths module", True)
             except Exception as e:
                 self.log_result("Import paths module", False, f"Import error: {e}")
@@ -251,7 +249,7 @@ class PathPortabilityTester:
             try:
                 shutil.rmtree(temp_dir)
             except Exception as e:
-                print(f"Warning: Could not clean up {temp_dir}: {e}")
+                logging.warning(f"Warning: Could not clean up {temp_dir}: {e}")
     
     def run_all_tests(self):
         """Run all path portability tests"""

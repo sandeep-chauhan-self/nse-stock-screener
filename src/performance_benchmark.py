@@ -1,3 +1,4 @@
+import logging
 #!/usr/bin/env python3
 """
 Performance Benchmark Script for Advanced Indicators
@@ -10,13 +11,14 @@ Requirements 3.8 Implementation: Performance hotspots optimization
 - Provides comprehensive performance metrics
 """
 
-import sys
 import os
+import statistics
+import sys
 import time
+
+from typing import Dict, List
 import numpy as np
 import pandas as pd
-from typing import Dict, List
-import statistics
 
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -118,7 +120,7 @@ def run_performance_benchmark(symbol_count: int = 50) -> Dict[str, any]:
                 
         except Exception as e:
             failed_tests += 1
-            print(f"    ❌ Error processing {symbol}: {e}")
+            logging.error(f"    ❌ Error processing {symbol}: {e}")
         
         # Progress indicator
         if i % 10 == 0:

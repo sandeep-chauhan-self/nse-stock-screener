@@ -3,14 +3,15 @@ Stock Analysis Metrics and Monitoring System
 Tracks specific metrics for the NSE Stock Screener operations
 """
 
-import time
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
 from collections import defaultdict, deque
-import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 import json
+import time
+
+from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional
+import threading
 
 from .logging_config import get_logger, metrics
 

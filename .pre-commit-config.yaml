@@ -1,0 +1,162 @@
+# Pre-commit configuration for NSE Stock Screener
+# Implements automated code hygiene checks to prevent future issues
+# Run: pre-commit install (after pip install pre-commit)
+
+repos:
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      # Basic file hygiene
+      - id: trailing-whitespace
+        name: "Remove trailing whitespace"
+      - id: end-of-file-fixer
+        name: "Ensure files end with newline"
+      - id: check-merge-conflict
+        name: "Check for merge conflict markers"
+      - id: check-yaml
+        name: "Validate YAML files"
+      - id: check-json
+        name: "Validate JSON files"
+      - id: check-toml
+        name: "Validate TOML files"
+      
+      # Python-specific checks
+      - id: check-ast
+        name: "Validate Python AST"
+        language: python
+        files: \.py$
+      - id: debug-statements
+        name: "Check for debug statements"
+        language: python
+        files: \.py$
+      - id: check-docstring-first
+        name: "Check docstring placement"
+        language: python
+        files: \.py$
+
+  # Python code formatting with Black
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black
+        name: "Format Python code with Black"
+        language: python
+        files: \.py$
+        args: ["--line-length=88", "--target-version=py39"]
+
+  # Import sorting with isort
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        name: "Sort Python imports"
+        language: python
+        files: \.py$
+        args: ["--profile=black", "--line-length=88"]
+
+  # Python linting with Ruff (faster alternative to flake8)
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.287
+    hooks:
+      - id: ruff
+        name: "Lint Python code with Ruff"
+        language: python
+        files: \.py$
+        args: ["--fix", "--exit-non-zero-on-fix"]
+
+  # Type checking with MyPy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy
+        name: "Type check with MyPy"
+        language: python
+        files: \.py$
+        args: ["--ignore-missing-imports", "--disallow-untyped-defs"]
+        additional_dependencies: [types-requests, types-PyYAML]
+
+  # Security scanning with Bandit
+  - repo: https://github.com/pycqa/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        name: "Security scan with Bandit"
+        language: python
+        files: \.py$
+        args: ["-r", "-ll", "-x", "tests/"]
+
+  # Docstring checking with pydocstyle
+  - repo: https://github.com/pycqa/pydocstyle
+    rev: 6.3.0
+    hooks:
+      - id: pydocstyle
+        name: "Check docstrings with pydocstyle"
+        language: python
+        files: \.py$
+        args: ["--convention=google", "--add-ignore=D100,D104"]
+
+  # Custom hygiene checks
+  - repo: local
+    hooks:
+      # Check for print statements (should use logging)
+      - id: check-print-statements
+        name: "Check for print statements"
+        entry: python scripts/hygiene_checks.py --check-prints
+        language: python
+        files: \.py$
+        pass_filenames: true
+
+      # Check for placeholder implementations
+      - id: check-placeholders
+        name: "Check for placeholder implementations"
+        entry: python scripts/hygiene_checks.py --check-placeholders
+        language: python
+        files: \.py$
+        pass_filenames: true
+
+      # Check for duplicate imports
+      - id: check-duplicate-imports
+        name: "Check for duplicate imports"
+        entry: python scripts/hygiene_checks.py --check-duplicates
+        language: python
+        files: \.py$
+        pass_filenames: true
+
+      # Check for incomplete docstrings
+      - id: check-docstrings
+        name: "Check docstring completeness"
+        entry: python scripts/hygiene_checks.py --check-docstrings
+        language: python
+        files: \.py$
+        pass_filenames: true
+
+      # Run comprehensive hygiene analysis
+      - id: hygiene-analysis
+        name: "Run hygiene analysis"
+        entry: python scripts/code_hygiene_analyzer.py --root .
+        language: python
+        files: \.py$
+        pass_filenames: false
+        stages: [manual]  # Run manually with: pre-commit run hygiene-analysis --hook-stage manual
+
+# Configuration for specific tools
+ci:
+  # Skip some hooks in CI to speed up
+  skip: [mypy, bandit]
+
+# Additional settings
+default_language_version:
+  python: python3.9
+
+exclude: |
+  (?x)^(
+      migrations/|
+      __pycache__/|
+      \.git/|
+      \.venv/|
+      venv/|
+      build/|
+      dist/|
+      .*\.egg-info/
+  )$

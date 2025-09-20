@@ -3,20 +3,21 @@ Centralized Logging and Observability System
 Provides structured logging, metrics collection, and retry mechanisms for the NSE Stock Screener
 """
 
+from collections import defaultdict, deque
+from datetime import datetime, timezone
+from functools import wraps
+from pathlib import Path
+import json
 import logging
 import logging.config
-import json
-import uuid
-import time
-import threading
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, Any, Optional, Callable, List
-from functools import wraps
-from dataclasses import dataclass, asdict
-from collections import defaultdict, deque
 import sys
+import time
+
+from contextlib import contextmanager
+from dataclasses import dataclass, asdict
+from typing import Dict, Any, Optional, Callable, List
+import threading
+import uuid
 
 
 @dataclass

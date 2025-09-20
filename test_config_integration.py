@@ -1,17 +1,18 @@
+import logging
 """
 Configuration Integration Tests
 Tests for the centralized configuration system to ensure all modules
 work correctly with the new SystemConfig approach.
 """
 
-import unittest
-import os
-import tempfile
-import json
 from datetime import datetime
 from pathlib import Path
+import json
+import os
 
-# Import the centralized configuration
+import tempfile
+import unittest
+
 from src.config import SystemConfig, ConfigManager, get_config, set_config, load_config_from_environment
 
 class TestSystemConfig(unittest.TestCase):
@@ -199,7 +200,6 @@ class TestModuleIntegration(unittest.TestCase):
         """Test AdvancedBacktester with centralized config"""
         try:
             from src.advanced_backtester import AdvancedBacktester
-            from src.config import SystemConfig
             
             config = SystemConfig(
                 portfolio_capital=750000,
@@ -261,12 +261,12 @@ def run_integration_tests():
     print(f"\n{'✅' if result.wasSuccessful() else '❌'} Tests Summary:")
     print(f"   Tests run: {result.testsRun}")
     print(f"   Failures: {len(result.failures)}")
-    print(f"   Errors: {len(result.errors)}")
+    logging.error(f"   Errors: {len(result.errors)}")
     
     if not result.wasSuccessful():
         print("\n❌ Test Failures:")
         for test, traceback in result.failures + result.errors:
-            print(f"   {test}: {traceback.split('AssertionError:')[-1].strip()}")
+            logging.error(f"   {test}: {traceback.split('AssertionError:')[-1].strip()}")
     
     return result.wasSuccessful()
 

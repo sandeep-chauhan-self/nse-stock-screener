@@ -1,9 +1,10 @@
+import logging
 """
 Test script to validate the volume threshold fix for Requirement 3.2
 """
 
-import sys
 import os
+import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 import numpy as np
@@ -22,7 +23,7 @@ def test_volume_threshold_config():
     errors = config.validate_config()
     
     if errors:
-        print(f"❌ Configuration validation failed: {errors}")
+        logging.error(f"❌ Configuration validation failed: {errors}")
         return False
     else:
         print("✅ Default configuration is valid")
@@ -36,7 +37,7 @@ def test_volume_threshold_config():
             multiplier = config.regime_extreme_multipliers[regime]
             print(f"  {regime.value}: {base} * {multiplier} = {extreme}")
         except KeyError as e:
-            print(f"  ❌ KeyError for {regime}: {e}")
+            logging.error(f"  ❌ KeyError for {regime}: {e}")
             print(f"     Available keys: {list(config.regime_base_thresholds.keys())}")
             return False
     
@@ -156,7 +157,7 @@ def main():
             print("❌ Some tests failed. Please review the issues above.")
             
     except Exception as e:
-        print(f"❌ Test execution failed with error: {e}")
+        logging.error(f"❌ Test execution failed with error: {e}")
         import traceback
         traceback.print_exc()
         all_passed = False

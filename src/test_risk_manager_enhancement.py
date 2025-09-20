@@ -4,8 +4,8 @@ Test script for enhanced risk manager implementation (Requirement 3.6)
 Validates safety improvements and position sizing logic
 """
 
-import sys
 import os
+import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from risk_manager import RiskManager

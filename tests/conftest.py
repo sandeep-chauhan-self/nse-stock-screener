@@ -4,14 +4,15 @@ Conftest.py - Pytest configuration and shared fixtures
 This file provides common fixtures and configuration for all tests.
 """
 
-import pytest
-import pandas as pd
-import numpy as np
-import sys
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+import os
+import sys
+
 from typing import Dict, Any
+from unittest.mock import MagicMock, patch
+import numpy as np
+import pandas as pd
+import pytest
 
 # Add src to Python path for testing
 ROOT_DIR = Path(__file__).parent.parent

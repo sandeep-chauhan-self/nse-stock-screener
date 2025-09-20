@@ -10,17 +10,12 @@ Usage:
     python Equity_all.py --help
 """
 
-import argparse
 from pathlib import Path
+import argparse
 import logging
 
-# Use enhanced data ingestion layer
+from .common.paths import add_output_argument, resolve_output_path, ensure_dir
 from .data.compat import get_nse_symbols
-
-# Import path utilities for cross-platform compatibility
-from .common.paths import (
-    add_output_argument, resolve_output_path, ensure_dir
-)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -55,7 +50,7 @@ def fetch_nse_symbols():
         
     except Exception as e:
         logger.error(f"Error fetching NSE symbols: {e}")
-        print(f"❌ Error fetching NSE data: {e}")
+        logging.error(f"❌ Error fetching NSE data: {e}")
         return None
 
 
@@ -80,7 +75,7 @@ def save_symbols(symbols, output_path):
         print(f"📁 File location: {output_path.resolve()}")
         
     except Exception as e:
-        print(f"❌ Error saving symbols: {e}")
+        logging.error(f"❌ Error saving symbols: {e}")
         raise
 
 
@@ -146,7 +141,7 @@ if __name__ == "__main__":
         print("\n⏹️  Operation cancelled by user.")
         sys.exit(1)
     except Exception as e:
-        print(f"\n💥 Unexpected error: {e}")
+        logging.error(f"\n💥 Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

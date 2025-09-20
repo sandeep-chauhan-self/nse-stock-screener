@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Tuple, List
 import numpy as np
 import pandas as pd
+
 from .enums import MarketRegime
 
 

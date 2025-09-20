@@ -6,26 +6,21 @@ Cross-platform compatible with proper path handling and command-line options.
 Enhanced with robust data fetching, retry logic, and caching.
 """
 
-import os
-import sys
-import requests
-import pandas as pd
-import time
-import random
-import argparse
-from bs4 import BeautifulSoup
 from pathlib import Path
+import argparse
 import logging
+import os
+import random
+import sys
+import time
 
-# Use enhanced data ingestion layer for robust fetching
+from bs4 import BeautifulSoup
+import pandas as pd
+import requests
+
+from .common.paths import PathManager, add_output_argument, resolve_output_path, get_data_path, get_temp_path, ensure_dir
 from .data.compat import enhanced_yfinance as yf, enhanced_requests, get_nse_symbols
 from .data.validation import validate_symbol
-
-# Import path utilities for cross-platform compatibility
-from .common.paths import (
-    PathManager, add_output_argument, resolve_output_path,
-    get_data_path, get_temp_path, ensure_dir
-)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -73,7 +68,7 @@ def fetch_nse_stocks():
         
     except Exception as e:
         logger.error(f"Error in NSE stock fetching: {e}")
-        print(f"❌ Error fetching NSE stocks: {e}")
+        logging.error(f"❌ Error fetching NSE stocks: {e}")
         return []
 
 def fetch_us_stocks():
@@ -157,7 +152,7 @@ def fetch_us_stocks():
                 return top_us_stocks
         
     except Exception as e:
-        print(f"Error fetching US stocks: {e}")
+        logging.error(f"Error fetching US stocks: {e}")
         return []
 
 def fetch_dow_jones():
@@ -216,7 +211,7 @@ def fetch_dow_jones():
             return dow_jones_stocks
         
     except Exception as e:
-        print(f"Error fetching Dow Jones stocks: {e}")
+        logging.error(f"Error fetching Dow Jones stocks: {e}")
         return []
 
 def fetch_nasdaq_100():
@@ -301,7 +296,7 @@ def fetch_nasdaq_100():
                 return nasdaq_100_stocks
         
     except Exception as e:
-        print(f"Error fetching NASDAQ-100 stocks: {e}")
+        logging.error(f"Error fetching NASDAQ-100 stocks: {e}")
         return []
 
 def fetch_ftse_100():
@@ -397,7 +392,7 @@ def fetch_ftse_100():
                 return ftse_100_stocks
         
     except Exception as e:
-        print(f"Error fetching FTSE 100 stocks: {e}")
+        logging.error(f"Error fetching FTSE 100 stocks: {e}")
         return []
 
 def validate_symbols(symbols, max_to_check=100):
@@ -428,7 +423,7 @@ def validate_symbols(symbols, max_to_check=100):
             
         except Exception as e:
             logger.warning(f"Error checking {symbol}: {e}")
-            print(f"✗ Error checking {symbol}: {e}")
+            logging.error(f"✗ Error checking {symbol}: {e}")
     
     logger.info(f"Validated {len(valid_symbols)}/{len(to_check)} symbols")
     # Return both the validated subset and the full list
@@ -499,7 +494,7 @@ Examples:
     print("STOCK SYMBOL FETCHER")
     print("=" * 50)
     print("This script will fetch real stock symbols from various exchanges")
-    print("and save them to a file for use with the Early Warning System.")
+    logging.warning("and save them to a file for use with the Early Warning System.")
     print(f"Output will be saved to: {output_path}")
     print("=" * 50)
     print()
@@ -586,7 +581,7 @@ Examples:
     # Save to file
     save_symbols(all_symbols, output_path, args.limit)
     
-    print("\n✅ Done! You can now use these symbols with the Early Warning System.")
+    logging.warning("\n✅ Done! You can now use these symbols with the Early Warning System.")
     print(f"📁 File saved to: {output_path}")
     print(f"🗂️  Absolute path: {output_path.resolve()}")
 
@@ -675,7 +670,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
     except Exception as e:
-        print(f"\nAn error occurred: {e}")
+        logging.error(f"\nAn error occurred: {e}")
         import traceback
         traceback.print_exc()
     

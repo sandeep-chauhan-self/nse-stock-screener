@@ -1,16 +1,18 @@
+import logging
 """
 Robust Backtesting Framework
 Implements walk-forward backtesting with transaction costs, slippage, and comprehensive performance metrics
 """
 
-import numpy as np
-import pandas as pd
-import yfinance as yf
 from datetime import datetime, timedelta
+
+from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional, Any
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
+import numpy as np
+import pandas as pd
 import warnings
+import yfinance as yf
 
 # Import centralized configuration
 try:
@@ -396,7 +398,7 @@ class AdvancedBacktester:
             return trade_result
             
         except Exception as e:
-            print(f"Error simulating trade for {symbol}: {e}")
+            logging.error(f"Error simulating trade for {symbol}: {e}")
             return None
     
     def walk_forward_backtest(self, signals_data: Dict[str, List[Dict]], 
@@ -492,7 +494,7 @@ class AdvancedBacktester:
                             all_trades.append(trade)
                             
                 except Exception as e:
-                    print(f"Error checking position {symbol}: {e}")
+                    logging.error(f"Error checking position {symbol}: {e}")
             
             # Close positions
             for symbol in positions_to_close:
@@ -577,7 +579,7 @@ class AdvancedBacktester:
                     portfolio_value += net_profit
                     all_trades.append(trade)
             except Exception as e:
-                print(f"Error closing final position {symbol}: {e}")
+                logging.error(f"Error closing final position {symbol}: {e}")
         
         # Store results
         self.trades = all_trades

@@ -9,14 +9,15 @@ Tests all components of the robust data fetching infrastructure:
 - Integration with existing modules
 """
 
+from datetime import datetime, timedelta
+from pathlib import Path
+import logging
 import os
 import sys
 import time
-import logging
-from pathlib import Path
-from datetime import datetime, timedelta
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 # Add the src directory to the path for imports
 current_dir = Path(__file__).parent
@@ -225,7 +226,6 @@ class DataIngestionTester:
         """Test data validation system"""
         try:
             from src.data.validation import validate_stock_data
-            from src.data.compat import enhanced_yfinance as yf
             
             # Get some real data for validation
             ticker = yf.Ticker('TCS.NS')
@@ -260,7 +260,6 @@ class DataIngestionTester:
         """Test corporate action detection and adjustment"""
         try:
             from src.data.validation import adjust_for_corporate_actions
-            from src.data.compat import enhanced_yfinance as yf
             
             # Get data for a stock that might have corporate actions
             ticker = yf.Ticker('AAPL')  # Apple often has splits
@@ -415,7 +414,7 @@ def main():
         print("The enhanced data ingestion system is mostly working but needs attention.")
     else:
         print(f"❌ SIGNIFICANT ISSUES: {passed} passed, {failed} failed")
-        print("The enhanced data ingestion system needs debugging.")
+        logging.debug("The enhanced data ingestion system needs debugging.")
     
     return 0 if failed == 0 else 1
 

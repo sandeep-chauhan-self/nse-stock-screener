@@ -3,15 +3,16 @@ Comprehensive Test Suite for Logging and Error Handling Improvements
 Tests Requirement 3.10 implementation: Logging, observability, and error handling
 """
 
-import pytest
-import tempfile
-import time
+from datetime import datetime
+from pathlib import Path
 import json
 import logging
-from pathlib import Path
+import time
+
 from unittest.mock import patch, MagicMock
-from datetime import datetime
 import pandas as pd
+import pytest
+import tempfile
 
 # Import modules to test
 try:
@@ -33,7 +34,7 @@ try:
         safe_stock_analysis
     )
 except ImportError as e:
-    print(f"Import error: {e}")
+    logging.error(f"Import error: {e}")
     print("Running tests from test directory...")
     import sys
     sys.path.append('..')
@@ -555,7 +556,7 @@ class TestIntegrationScenarios:
 def run_comprehensive_test_suite():
     """Run all tests with detailed reporting"""
     
-    print("🧪 Running Comprehensive Logging and Error Handling Test Suite")
+    logging.error("🧪 Running Comprehensive Logging and Error Handling Test Suite")
     print("=" * 70)
     
     test_classes = [

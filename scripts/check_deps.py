@@ -1,3 +1,4 @@
+import logging
 #!/usr/bin/env python3
 """
 Enhanced Dependency Checker for NSE Stock Screener
@@ -14,15 +15,16 @@ Features:
 - Validates package versions for compatibility
 """
 
+from pathlib import Path
+import json
+import os
 import sys
-import subprocess
+
+from typing import List, Dict, Tuple, Optional
 import importlib
 import importlib.util
 import pkg_resources
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional
-import json
-import os
+import subprocess
 
 
 class Color:
@@ -435,7 +437,7 @@ class DependencyChecker:
         print(f"\n{Color.BOLD}Overall Status:{Color.END}")
         print(f"  {Color.GREEN}✓ Passed:{Color.END} {total_passed}")
         print(f"  {Color.RED}✗ Failed:{Color.END} {total_failed}")
-        print(f"  {Color.YELLOW}⚠ Warnings:{Color.END} {total_warnings}")
+        logging.warning(f"  {Color.YELLOW}⚠ Warnings:{Color.END} {total_warnings}")
         
         # Category breakdown
         for category, results in self.results.items():
@@ -456,7 +458,7 @@ class DependencyChecker:
         if total_failed == 0:
             print(f"\n{Color.BOLD}{Color.GREEN}🎉 All critical dependencies are satisfied!{Color.END}")
             if total_warnings > 0:
-                print(f"{Color.YELLOW}Note: {total_warnings} warning(s) found but system should work.{Color.END}")
+                logging.warning(f"{Color.YELLOW}Note: {total_warnings} warning(s) found but system should work.{Color.END}")
             return True
         else:
             print(f"\n{Color.BOLD}{Color.RED}❌ {total_failed} critical issues found. Please fix before proceeding.{Color.END}")

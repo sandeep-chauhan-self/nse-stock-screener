@@ -4,8 +4,8 @@ Test script for enhanced backtester transaction costs (Requirement 3.7)
 Validates realistic cost modeling and compares old vs new P&L calculations
 """
 
-import sys
 import os
+import sys
 sys.path.append('src')
 
 from advanced_backtester import AdvancedBacktester

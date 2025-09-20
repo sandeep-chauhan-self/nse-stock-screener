@@ -5,9 +5,10 @@ Run with: python -m pytest test_enums.py -v
 Or directly: python test_enums.py
 """
 
-import unittest
-import sys
 from pathlib import Path
+import sys
+
+import unittest
 
 # Add src directory to path
 current_dir = Path(__file__).resolve().parent

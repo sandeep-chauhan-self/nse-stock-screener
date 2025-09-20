@@ -1,18 +1,20 @@
+import logging
 """
 Early Warning System for Potential Stock Jumps
 Combines multiple signals for higher probability setups
 """
 
-import yfinance as yf
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
-import requests
-import matplotlib.pyplot as plt
-import os
-import time
 import argparse
+import os
 import sys
+import time
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import requests
+import yfinance as yf
 
 class EarlyWarningSystem:
     def __init__(self, custom_stocks=None, input_file=None, batch_size=50, timeout=10):
@@ -60,7 +62,7 @@ class EarlyWarningSystem:
         try:
             # Check if file exists
             if not os.path.exists(file_path):
-                print(f"Error: File {file_path} not found")
+                logging.error(f"Error: File {file_path} not found")
                 return self.default_stocks
                 
             # Read file extension
@@ -91,7 +93,7 @@ class EarlyWarningSystem:
             return formatted_stocks
                 
         except Exception as e:
-            print(f"Error loading stocks from file: {e}")
+            logging.error(f"Error loading stocks from file: {e}")
             return self.default_stocks
     
     def unusual_volume_detector(self, symbol, volume_threshold=3):
@@ -101,7 +103,7 @@ class EarlyWarningSystem:
             data = stock.history(period="3mo")
             
             if data.empty or len(data) < 20:
-                print(f"Warning: Insufficient data for {symbol}")
+                logging.warning(f"Warning: Insufficient data for {symbol}")
                 return None
                 
             # Calculate volume metrics
@@ -121,7 +123,7 @@ class EarlyWarningSystem:
                     'signal_strength': 'HIGH' if volume_ratio > 5 else 'MEDIUM'
                 }
         except Exception as e:
-            print(f"Error in volume detection for {symbol}: {e}")
+            logging.error(f"Error in volume detection for {symbol}: {e}")
             return None
     
     def momentum_acceleration_detector(self, symbol):
@@ -131,7 +133,7 @@ class EarlyWarningSystem:
             data = stock.history(period="3mo")
             
             if data.empty or len(data) < 26:
-                print(f"Warning: Insufficient data for {symbol}")
+                logging.warning(f"Warning: Insufficient data for {symbol}")
                 return None
                 
             # Calculate RSI
@@ -174,7 +176,7 @@ class EarlyWarningSystem:
                 'probability': 'HIGH' if momentum_score >= 4 else 'MEDIUM' if momentum_score >= 2 else 'LOW'
             }
         except Exception as e:
-            print(f"Error in momentum detection for {symbol}: {e}")
+            logging.error(f"Error in momentum detection for {symbol}: {e}")
             return None
             
     def analyze_and_plot_stock(self, symbol):
@@ -258,7 +260,7 @@ class EarlyWarningSystem:
             return chart_path
             
         except Exception as e:
-            print(f"Error generating chart for {symbol}: {e}")
+            logging.error(f"Error generating chart for {symbol}: {e}")
             return None
             
     def backtest_signal(self, symbol, days=5):
@@ -347,7 +349,7 @@ class EarlyWarningSystem:
                 return None
             
         except Exception as e:
-            print(f"Error in backtesting for {symbol}: {e}")
+            logging.error(f"Error in backtesting for {symbol}: {e}")
             return None
             
     def visualize_backtest_results(self, backtest_df, symbol):
@@ -400,7 +402,7 @@ class EarlyWarningSystem:
             print(f"Backtest visualization saved to {chart_path}")
             
         except Exception as e:
-            print(f"Error creating backtest visualization: {e}")
+            logging.error(f"Error creating backtest visualization: {e}")
             
     def save_report_to_csv(self, high_probability_stocks, medium_probability_stocks):
         """Save the report to CSV files for future reference"""
@@ -438,11 +440,11 @@ class EarlyWarningSystem:
                 print(f"Combined report saved to {all_file}")
                 
         except Exception as e:
-            print(f"Error saving report to CSV: {e}")
+            logging.error(f"Error saving report to CSV: {e}")
             
     def generate_early_warning_report(self):
         """Generate comprehensive early warning report"""
-        print("🚨 EARLY WARNING SYSTEM REPORT")
+        logging.warning("🚨 EARLY WARNING SYSTEM REPORT")
         print("=" * 60)
         print(f"Analyzing {len(self.nse_stocks)} stocks for potential momentum...\n")
         
@@ -505,7 +507,7 @@ class EarlyWarningSystem:
                             'Probability': 'MEDIUM (Volume Only)'
                         })
                 except Exception as e:
-                    print(f"Error processing {symbol}: {e}")
+                    logging.error(f"Error processing {symbol}: {e}")
                 
                 # Brief pause to avoid API rate limits
                 time.sleep(0.5)
@@ -601,7 +603,7 @@ if __name__ == "__main__":
             os.chdir(args.output_dir)
             print(f"Output will be saved to: {os.path.abspath(args.output_dir)}")
         except Exception as e:
-            print(f"Error setting output directory: {e}")
+            logging.error(f"Error setting output directory: {e}")
     
     # Create custom stock list if provided via command line
     custom_stocks = None

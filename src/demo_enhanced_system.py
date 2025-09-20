@@ -1,11 +1,12 @@
+import logging
 """
 Enhanced Stock Screening System - Usage Example
 This demonstrates how to use the upgraded system with all new features
 """
 
-import sys
-import os
 from datetime import datetime
+import os
+import sys
 
 # Add the src directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__)))
@@ -160,11 +161,11 @@ if __name__ == "__main__":
         print("USAGE SUMMARY")
         print("=" * 80)
         print("Command Line Usage:")
-        print("python enhanced_early_warning_system.py                    # Default analysis")
-        print("python enhanced_early_warning_system.py -f stocks.txt     # From file")
-        print("python enhanced_early_warning_system.py -s RELIANCE,TCS   # Custom stocks")
-        print("python enhanced_early_warning_system.py --backtest        # With backtesting")
-        print("python enhanced_early_warning_system.py -b 20 -t 5        # Custom batch settings")
+        logging.warning("python enhanced_early_warning_system.py                    # Default analysis")
+        logging.warning("python enhanced_early_warning_system.py -f stocks.txt     # From file")
+        logging.warning("python enhanced_early_warning_system.py -s RELIANCE,TCS   # Custom stocks")
+        logging.warning("python enhanced_early_warning_system.py --backtest        # With backtesting")
+        logging.warning("python enhanced_early_warning_system.py -b 20 -t 5        # Custom batch settings")
         
         print("\nOutput Files:")
         print("- output/reports/high_probability_enhanced_*.csv")
@@ -176,6 +177,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n⏹️ Demo interrupted by user")
     except Exception as e:
-        print(f"\n❌ Error running demo: {e}")
+        logging.error(f"\n❌ Error running demo: {e}")
         import traceback
         traceback.print_exc()

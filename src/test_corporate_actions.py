@@ -1,3 +1,4 @@
+import logging
 #!/usr/bin/env python3
 """
 Corporate Action Validation Test Script
@@ -10,11 +11,12 @@ Tests the fixed corporate action handling to ensure:
 Requirements 3.9 Validation: Missing corporate actions & adjusted price handling
 """
 
-import sys
-import os
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
+import os
+import sys
+
+import numpy as np
+import pandas as pd
 
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -51,7 +53,7 @@ def test_corporate_action_detection():
                     print(f"    {date_str}: {event['description']}")
             
         except Exception as e:
-            print(f"  ❌ Error analyzing {symbol}: {e}")
+            logging.error(f"  ❌ Error analyzing {symbol}: {e}")
 
 def test_adjusted_vs_raw_prices():
     """Test difference between adjusted and raw prices"""
@@ -95,7 +97,7 @@ def test_adjusted_vs_raw_prices():
                 print(f"  ℹ️  No significant corporate action adjustments in this period")
         
     except Exception as e:
-        print(f"  ❌ Error comparing prices: {e}")
+        logging.error(f"  ❌ Error comparing prices: {e}")
 
 def test_indicator_consistency():
     """Test that indicators are calculated consistently with adjusted prices"""
@@ -132,7 +134,7 @@ def test_indicator_consistency():
                 print(f"  ❌ Failed to compute indicators")
                 
         except Exception as e:
-            print(f"  ❌ Error computing indicators: {e}")
+            logging.error(f"  ❌ Error computing indicators: {e}")
 
 def test_data_quality_validation():
     """Test data quality validation"""
@@ -155,7 +157,7 @@ def test_data_quality_validation():
             print(f"  Data Quality Results:")
             print(f"    Is Valid: {validation['is_valid']}")
             print(f"    Issues: {len(validation['issues'])}")
-            print(f"    Warnings: {len(validation['warnings'])}")
+            logging.warning(f"    Warnings: {len(validation['warnings'])}")
             
             # Show issues if any
             if validation['issues']:
@@ -165,9 +167,9 @@ def test_data_quality_validation():
             
             # Show warnings if any
             if validation['warnings']:
-                print(f"  Warnings:")
+                logging.warning(f"  Warnings:")
                 for warning in validation['warnings'][:2]:  # Show first 2 warnings
-                    print(f"    ⚠️  {warning['type']}: {warning['message']}")
+                    logging.warning(f"    ⚠️  {warning['type']}: {warning['message']}")
             
             if validation['is_valid']:
                 print(f"  ✅ Data quality validation passed")
@@ -175,7 +177,7 @@ def test_data_quality_validation():
                 print(f"  ❌ Data quality validation failed")
         
     except Exception as e:
-        print(f"  ❌ Error validating data quality: {e}")
+        logging.error(f"  ❌ Error validating data quality: {e}")
 
 def test_performance_impact():
     """Test performance impact of corporate action handling"""
@@ -198,7 +200,7 @@ def test_performance_impact():
             if indicators:
                 successful_computations += 1
         except Exception as e:
-            print(f"  ❌ Error with {symbol}: {e}")
+            logging.error(f"  ❌ Error with {symbol}: {e}")
     
     end_time = time.perf_counter()
     total_time = end_time - start_time

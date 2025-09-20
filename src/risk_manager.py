@@ -4,11 +4,12 @@ Implements comprehensive risk management including position sizing, stop losses,
 take profits, exposure limits, and trailing stops
 """
 
+from datetime import datetime, timedelta
+
+from dataclasses import dataclass
+from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional, Any
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 
 # Import centralized configuration
 try:

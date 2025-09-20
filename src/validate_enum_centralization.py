@@ -1,3 +1,4 @@
+import logging
 """
 Enum Centralization Validation Script
 
@@ -5,9 +6,9 @@ This script validates that the enum centralization was successful
 and that all modules can properly import and use the centralized enums.
 """
 
-import sys
-import os
 from pathlib import Path
+import os
+import sys
 
 # Add the src directory to the path
 current_dir = Path(__file__).resolve().parent
@@ -64,7 +65,7 @@ def test_module_imports():
         # Test enhanced_early_warning_system imports
         sys.path.append(str(src_dir))
         import enhanced_early_warning_system
-        print("✅ enhanced_early_warning_system imports successfully")
+        logging.warning("✅ enhanced_early_warning_system imports successfully")
         
         # Test that it uses the centralized MarketRegime
         from common.enums import MarketRegime
@@ -72,7 +73,7 @@ def test_module_imports():
         print(f"✅ MarketRegime.SIDEWAYS = {test_regime}")
         
     except ImportError as e:
-        print(f"❌ enhanced_early_warning_system import failed: {e}")
+        logging.warning(f"❌ enhanced_early_warning_system import failed: {e}")
         return False
     
     try:
@@ -120,7 +121,7 @@ def test_enum_validation():
         
         # Test enum info
         enum_info = get_all_enum_info()
-        print(f"✅ Enum info retrieved for {len(enum_info)} enum classes")
+        logging.info(f"✅ Enum info retrieved for {len(enum_info)} enum classes")
         
         for enum_name, members in enum_info.items():
             print(f"   {enum_name}: {len(members)} members")
@@ -149,13 +150,13 @@ def main():
         print("🎉 ALL TESTS PASSED - Enum centralization successful!")
         print("\nSummary of changes:")
         print("- Created src/common/enums.py with all shared enums")
-        print("- Updated enhanced_early_warning_system.py to use centralized enums")
+        logging.warning("- Updated enhanced_early_warning_system.py to use centralized enums")
         print("- Updated composite_scorer.py to use centralized enums")  
         print("- Updated risk_manager.py to use centralized enums")
         print("- Removed duplicate enum definitions")
         print("- Eliminated conversion hacks and circular import workarounds")
     else:
-        print("❌ SOME TESTS FAILED - Please check the errors above")
+        logging.error("❌ SOME TESTS FAILED - Please check the errors above")
     
     print("=" * 60)
     return all_tests_passed
