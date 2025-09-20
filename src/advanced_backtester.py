@@ -13,7 +13,11 @@ from dataclasses import dataclass
 import warnings
 
 # Import centralized configuration
-from .config import SystemConfig, get_config
+try:
+    from .config import SystemConfig, get_config
+except ImportError:
+    # Fallback for direct execution
+    from config import SystemConfig, get_config
 
 warnings.filterwarnings('ignore')
 
@@ -85,9 +89,167 @@ class AdvancedBacktester:
         risk = entry_price - stop_loss
         return entry_price + (risk * self.config.take_profit_multiplier)
     
+    def calculate_detailed_transaction_costs(self, trade_value: float, 
+                                           quantity: int, price: float, 
+                                           is_buy: bool = True) -> Dict[str, float]:
+        """
+        Calculate detailed transaction costs with proper Indian market structure:
+        - Brokerage (per side)
+        - STT (Securities Transaction Tax)
+        - Exchange charges
+        - GST on brokerage + exchange charges
+        - Stamp duty (buy side only)
+        """
+        costs = {}
+        
+        # 1. Brokerage (per side)
+        brokerage = trade_value * self.config.brokerage_rate
+        costs['brokerage'] = brokerage
+        
+        # 2. STT - Securities Transaction Tax (both sides but different rates)
+        stt = trade_value * self.config.stt_rate
+        costs['stt'] = stt
+        
+        # 3. Exchange charges (per side)
+        exchange_charges = trade_value * self.config.exchange_charges
+        costs['exchange_charges'] = exchange_charges
+        
+        # 4. GST on (Brokerage + Exchange charges)
+        gst_base = brokerage + exchange_charges
+        gst = gst_base * self.config.gst_rate
+        costs['gst'] = gst
+        
+        # 5. Stamp duty (buy side only)
+        if is_buy:
+            stamp_duty = trade_value * self.config.stamp_duty_rate
+            costs['stamp_duty'] = stamp_duty
+        else:
+            costs['stamp_duty'] = 0.0
+        
+        # Total commission costs
+        total_commission = sum(costs.values())
+        costs['total_commission'] = total_commission
+        
+        return costs
+    
+    def calculate_slippage_cost(self, quantity: int, price: float, 
+                              avg_volume: float = None, symbol: str = None) -> Dict[str, float]:
+        """
+        Calculate slippage based on configured model:
+        - Fixed: constant Rs per share
+        - Adaptive: based on order size vs average volume
+        - Liquidity-based: market impact modeling
+        """
+        slippage_info = {}
+        
+        if self.config.slippage_model == "fixed":
+            # Fixed slippage per share
+            slippage_per_share = self.config.slippage_per_share
+            total_slippage = quantity * slippage_per_share
+            
+        elif self.config.slippage_model == "adaptive":
+            # Basis points of price, adjusted for order size
+            base_slippage_rs = price * (self.config.base_slippage_bps / 10000)
+            
+            # Adjust based on order size if volume data available
+            size_multiplier = 1.0
+            if avg_volume and avg_volume > 0:
+                order_pct = quantity / avg_volume
+                if order_pct > self.config.liquidity_impact_threshold:
+                    # Larger orders get higher slippage
+                    size_multiplier = 1.0 + (order_pct * self.config.market_impact_factor)
+            
+            slippage_per_share = base_slippage_rs * size_multiplier
+            total_slippage = quantity * slippage_per_share
+            
+        else:  # liquidity_based
+            # Advanced market impact model
+            if avg_volume and avg_volume > 0:
+                order_pct = quantity / avg_volume
+                # Square root market impact model
+                impact_factor = self.config.market_impact_factor * (order_pct ** 0.5)
+                slippage_per_share = price * impact_factor
+            else:
+                # Fallback to adaptive model
+                slippage_per_share = price * (self.config.base_slippage_bps / 10000)
+            
+            total_slippage = quantity * slippage_per_share
+        
+        slippage_info.update({
+            'slippage_per_share': slippage_per_share,
+            'total_slippage': total_slippage,
+            'model_used': self.config.slippage_model
+        })
+        
+        return slippage_info
+    
+    def apply_execution_costs(self, trade_value: float, quantity: int, 
+                            price: float, is_buy: bool = True,
+                            avg_volume: float = None, symbol: str = None) -> Dict[str, Any]:
+        """
+        Apply comprehensive execution costs including commission and slippage.
+        Returns both costs and adjusted execution price.
+        """
+        # Calculate commission costs
+        commission_costs = self.calculate_detailed_transaction_costs(
+            trade_value, quantity, price, is_buy
+        )
+        
+        # Calculate slippage (price impact)
+        slippage_costs = self.calculate_slippage_cost(
+            quantity, price, avg_volume, symbol
+        )
+        
+        # Determine actual execution price (including slippage)
+        slippage_per_share = slippage_costs['slippage_per_share']
+        if is_buy:
+            # Buying: slippage increases execution price
+            execution_price = price + slippage_per_share
+        else:
+            # Selling: slippage decreases execution price
+            execution_price = price - slippage_per_share
+        
+        # Recalculate actual trade value at execution price
+        actual_trade_value = quantity * execution_price
+        
+        # Calculate partial fill if enabled
+        fill_ratio = 1.0
+        if self.config.partial_fill_enabled:
+            # Simple partial fill model based on order size
+            if avg_volume and avg_volume > 0:
+                order_pct = quantity / avg_volume
+                if order_pct > self.config.liquidity_impact_threshold:
+                    # Larger orders may not fill completely
+                    fill_ratio = max(self.config.min_fill_ratio, 
+                                   1.0 - (order_pct * 0.5))
+        
+        filled_quantity = int(quantity * fill_ratio)
+        filled_trade_value = filled_quantity * execution_price
+        
+        # Recalculate commission on filled quantity
+        if filled_quantity != quantity:
+            commission_costs = self.calculate_detailed_transaction_costs(
+                filled_trade_value, filled_quantity, execution_price, is_buy
+            )
+        
+        return {
+            'commission_costs': commission_costs,
+            'slippage_costs': slippage_costs,
+            'original_price': price,
+            'execution_price': execution_price,
+            'requested_quantity': quantity,
+            'filled_quantity': filled_quantity,
+            'fill_ratio': fill_ratio,
+            'original_trade_value': trade_value,
+            'actual_trade_value': filled_trade_value,
+            'total_commission': commission_costs['total_commission'],
+            'total_slippage': slippage_costs['total_slippage']
+        }
+    
     def apply_transaction_costs(self, trade_value: float) -> float:
-        """Apply transaction costs and slippage"""
-        costs = trade_value * (self.config.transaction_cost + self.config.slippage)
+        """Legacy method for backward compatibility"""
+        # Use simple combined rate for backward compatibility
+        costs = trade_value * self.config.transaction_cost
         return costs
     
     def simulate_single_trade(self, symbol: str, entry_date: datetime, 
@@ -167,18 +329,49 @@ class AdvancedBacktester:
                 exit_price = data['Close'].iloc[-1]
                 exit_reason = 'time_exit'
             
-            # Calculate returns
+            # Calculate returns with enhanced cost model
             gross_return_pct = ((exit_price - entry_price) / entry_price) * 100
             
-            # Apply transaction costs
-            entry_value = quantity * entry_price
-            exit_value = quantity * exit_price
-            entry_costs = self.apply_transaction_costs(entry_value)
-            exit_costs = self.apply_transaction_costs(exit_value)
-            total_costs = entry_costs + exit_costs
+            # Get volume data for slippage calculation (if available)
+            avg_volume = signal_data.get('avg_volume', None)
             
-            net_profit = (exit_value - entry_value) - total_costs
-            net_return_pct = (net_profit / entry_value) * 100
+            # Apply enhanced execution costs for entry
+            entry_value = quantity * entry_price
+            entry_execution = self.apply_execution_costs(
+                entry_value, quantity, entry_price, 
+                is_buy=True, avg_volume=avg_volume, symbol=symbol
+            )
+            
+            # Apply enhanced execution costs for exit
+            exit_value = quantity * exit_price
+            exit_execution = self.apply_execution_costs(
+                exit_value, quantity, exit_price,
+                is_buy=False, avg_volume=avg_volume, symbol=symbol
+            )
+            
+            # Use actual execution prices and quantities
+            actual_entry_price = entry_execution['execution_price']
+            actual_exit_price = exit_execution['execution_price']
+            actual_quantity = min(entry_execution['filled_quantity'], 
+                                exit_execution['filled_quantity'])
+            
+            # Recalculate with actual execution details
+            actual_entry_value = actual_quantity * actual_entry_price
+            actual_exit_value = actual_quantity * actual_exit_price
+            
+            # Total costs (commission only - slippage already in execution price)
+            total_commission = (entry_execution['total_commission'] + 
+                              exit_execution['total_commission'])
+            
+            # Net profit calculation
+            gross_profit = actual_exit_value - actual_entry_value
+            net_profit = gross_profit - total_commission
+            net_return_pct = (net_profit / actual_entry_value) * 100 if actual_entry_value > 0 else 0
+            
+            # Update prices and quantity for the trade result
+            entry_price = actual_entry_price
+            exit_price = actual_exit_price
+            quantity = actual_quantity
             
             # Create trade result
             trade_result = TradeResult(
@@ -254,15 +447,37 @@ class AdvancedBacktester:
                             else:
                                 trade.exit_reason = 'time_exit'
                             
-                            # Recalculate returns
+                            # Recalculate returns with enhanced cost model
                             gross_return_pct = ((trade.exit_price - trade.entry_price) / trade.entry_price) * 100
+                            
+                            # Use simplified cost calculation for walk-forward (legacy compatibility)
                             entry_value = trade.quantity * trade.entry_price
                             exit_value = trade.quantity * trade.exit_price
-                            entry_costs = self.apply_transaction_costs(entry_value)
-                            exit_costs = self.apply_transaction_costs(exit_value)
-                            total_costs = entry_costs + exit_costs
-                            net_profit = (exit_value - entry_value) - total_costs
-                            net_return_pct = (net_profit / entry_value) * 100
+                            
+                            # Apply enhanced costs if we have volume data
+                            if hasattr(trade, 'avg_volume') and trade.avg_volume:
+                                # Enhanced calculation
+                                entry_exec = self.apply_execution_costs(
+                                    entry_value, trade.quantity, trade.entry_price, 
+                                    is_buy=True, avg_volume=trade.avg_volume, symbol=symbol
+                                )
+                                exit_exec = self.apply_execution_costs(
+                                    exit_value, trade.quantity, trade.exit_price,
+                                    is_buy=False, avg_volume=trade.avg_volume, symbol=symbol
+                                )
+                                total_costs = entry_exec['total_commission'] + exit_exec['total_commission']
+                                # Adjust prices for slippage
+                                actual_entry_value = trade.quantity * entry_exec['execution_price']
+                                actual_exit_value = trade.quantity * exit_exec['execution_price']
+                                net_profit = (actual_exit_value - actual_entry_value) - total_costs
+                            else:
+                                # Legacy calculation for backward compatibility
+                                entry_costs = self.apply_transaction_costs(entry_value)
+                                exit_costs = self.apply_transaction_costs(exit_value)
+                                total_costs = entry_costs + exit_costs
+                                net_profit = (exit_value - entry_value) - total_costs
+                            
+                            net_return_pct = (net_profit / entry_value) * 100 if entry_value > 0 else 0
                             
                             trade.gross_return_pct = gross_return_pct
                             trade.net_return_pct = net_return_pct
@@ -324,15 +539,33 @@ class AdvancedBacktester:
                     trade.exit_reason = 'end_of_backtest'
                     trade.days_held = (end_date - trade.entry_date).days
                     
-                    # Recalculate returns
+                    # Recalculate returns with enhanced cost model
                     gross_return_pct = ((trade.exit_price - trade.entry_price) / trade.entry_price) * 100
                     entry_value = trade.quantity * trade.entry_price
                     exit_value = trade.quantity * trade.exit_price
-                    entry_costs = self.apply_transaction_costs(entry_value)
-                    exit_costs = self.apply_transaction_costs(exit_value)
-                    total_costs = entry_costs + exit_costs
-                    net_profit = (exit_value - entry_value) - total_costs
-                    net_return_pct = (net_profit / entry_value) * 100
+                    
+                    # Use enhanced costs if available, otherwise legacy
+                    if hasattr(trade, 'avg_volume') and trade.avg_volume:
+                        entry_exec = self.apply_execution_costs(
+                            entry_value, trade.quantity, trade.entry_price, 
+                            is_buy=True, avg_volume=trade.avg_volume, symbol=symbol
+                        )
+                        exit_exec = self.apply_execution_costs(
+                            exit_value, trade.quantity, trade.exit_price,
+                            is_buy=False, avg_volume=trade.avg_volume, symbol=symbol
+                        )
+                        total_costs = entry_exec['total_commission'] + exit_exec['total_commission']
+                        actual_entry_value = trade.quantity * entry_exec['execution_price']
+                        actual_exit_value = trade.quantity * exit_exec['execution_price']
+                        net_profit = (actual_exit_value - actual_entry_value) - total_costs
+                    else:
+                        # Legacy calculation
+                        entry_costs = self.apply_transaction_costs(entry_value)
+                        exit_costs = self.apply_transaction_costs(exit_value)
+                        total_costs = entry_costs + exit_costs
+                        net_profit = (exit_value - entry_value) - total_costs
+                    
+                    net_return_pct = (net_profit / entry_value) * 100 if entry_value > 0 else 0
                     
                     trade.gross_return_pct = gross_return_pct
                     trade.net_return_pct = net_return_pct

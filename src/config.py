@@ -42,9 +42,28 @@ class SystemConfig:
     trailing_stop_atr_multiplier: float = 1.0 # Trail at 1x ATR
     take_profit_multiplier: float = 2.5       # Take profit at 2.5x risk
     
-    # Transaction Costs & Execution
-    transaction_cost: float = 0.0005     # 0.05% per side (brokerage + taxes)
-    slippage: float = 0.0005             # 0.05% slippage assumption
+    # Transaction Costs & Execution (Enhanced Model)
+    # Commission Structure (per side)
+    brokerage_rate: float = 0.0003       # 0.03% brokerage per side
+    stt_rate: float = 0.00025           # 0.025% STT (Securities Transaction Tax)
+    exchange_charges: float = 0.0000345  # 0.00345% exchange charges
+    gst_rate: float = 0.18              # 18% GST on brokerage + exchange charges
+    stamp_duty_rate: float = 0.00015    # 0.015% stamp duty (buy side only)
+    
+    # Legacy combined rate (for backward compatibility)
+    transaction_cost: float = 0.0005    # Calculated: ~0.05% total per side
+    
+    # Slippage Model (Price Impact)
+    slippage_model: str = "adaptive"     # "fixed", "adaptive", "liquidity_based"
+    base_slippage_bps: float = 2.0      # Base slippage in basis points (0.02%)
+    slippage_per_share: float = 0.05    # Fixed slippage in Rs per share
+    market_impact_factor: float = 0.1   # Market impact coefficient
+    
+    # Execution Model Parameters
+    partial_fill_enabled: bool = False  # Enable partial fill simulation
+    min_fill_ratio: float = 0.5        # Minimum % of order that gets filled
+    liquidity_impact_threshold: float = 0.01  # Order size % of volume for impact
+    max_spread_bps: float = 50.0        # Max bid-ask spread in basis points
     
     # Backtesting Parameters
     max_holding_days: int = 30           # Maximum days to hold position
@@ -128,12 +147,24 @@ class SystemConfig:
         if self.min_risk_reward_ratio < 1.0:
             errors.append("min_risk_reward_ratio should be >= 1.0")
         
-        # Cost validation
-        if not 0 <= self.transaction_cost <= 0.01:
-            errors.append("transaction_cost should be between 0 and 1%")
+        # Enhanced cost validation
+        if not 0 <= self.brokerage_rate <= 0.01:
+            errors.append("brokerage_rate should be between 0 and 1%")
         
-        if not 0 <= self.slippage <= 0.01:
-            errors.append("slippage should be between 0 and 1%")
+        if not 0 <= self.stt_rate <= 0.01:
+            errors.append("stt_rate should be between 0 and 1%")
+        
+        if not 0 <= self.transaction_cost <= 0.02:
+            errors.append("transaction_cost should be between 0 and 2%")
+        
+        if self.slippage_model not in ["fixed", "adaptive", "liquidity_based"]:
+            errors.append("slippage_model must be 'fixed', 'adaptive', or 'liquidity_based'")
+        
+        if not 0 <= self.base_slippage_bps <= 100:
+            errors.append("base_slippage_bps should be between 0 and 100 basis points")
+        
+        if self.slippage_per_share < 0:
+            errors.append("slippage_per_share must be non-negative")
         
         # Timing validation
         if self.max_holding_days <= 0:
@@ -267,8 +298,21 @@ class ConfigManager:
         return {
             'initial_capital': self._config.portfolio_capital,
             'risk_per_trade': self._config.risk_per_trade,
-            'transaction_cost': self._config.transaction_cost,
-            'slippage': self._config.slippage,
+            # Enhanced transaction cost settings
+            'brokerage_rate': self._config.brokerage_rate,
+            'stt_rate': self._config.stt_rate,
+            'exchange_charges': self._config.exchange_charges,
+            'gst_rate': self._config.gst_rate,
+            'stamp_duty_rate': self._config.stamp_duty_rate,
+            'transaction_cost': self._config.transaction_cost,  # Legacy
+            'slippage_model': self._config.slippage_model,
+            'base_slippage_bps': self._config.base_slippage_bps,
+            'slippage_per_share': self._config.slippage_per_share,
+            'market_impact_factor': self._config.market_impact_factor,
+            'partial_fill_enabled': self._config.partial_fill_enabled,
+            'min_fill_ratio': self._config.min_fill_ratio,
+            'liquidity_impact_threshold': self._config.liquidity_impact_threshold,
+            # Other backtest settings
             'stop_loss_atr_multiplier': self._config.stop_loss_atr_multiplier,
             'take_profit_multiplier': self._config.take_profit_multiplier,
             'max_holding_days': self._config.max_holding_days,
