@@ -304,6 +304,20 @@ trade_signals/
 portfolio_data/
 risk_reports/
 
+# Security and deployment files
+bandit-report.json
+safety-report.json
+semgrep-report.json
+trivy-results.sarif
+pip-audit-report.json
+compliance-report.md
+security-reports/
+secrets/
+*.key
+*.pem
+*.crt
+.env.backup
+
 
 
 

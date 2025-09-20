@@ -1,70 +1,256 @@
-# Docker Compose for NSE Stock Screener Development
+# NSE Stock Screener - Production Docker Compose
+# Includes hardened containers, secrets management, and monitoring
+
 version: '3.8'
 
 services:
+  # Main application service with security hardening
   nse-screener:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
     image: nse-screener:latest
-    container_name: nse-stock-screener
-    volumes:
-      # Mount data and output directories for persistence
-      - ./data:/app/data
-      - ./output:/app/output
-      # Mount source code for development (optional)
-      - ./src:/app/src:ro
+    container_name: nse-screener-app
+    restart: unless-stopped
+    
+    # Security settings
+    user: "1000:1000"  # Non-root user
+    read_only: true    # Read-only root filesystem
+    
+    # Temporary filesystems for security
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /app/temp:noexec,nosuid,size=200m
+      - /app/logs:noexec,nosuid,size=500m
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    
+    # Environment variables (secrets loaded from .env)
     environment:
       - NSE_SCREENER_ENV=production
-      - PYTHONPATH=/app/src
-    networks:
-      - screener-network
-    # Override default command for specific operations
-    command: ["python", "-m", "src.enhanced_early_warning_system", "--symbols", "RELIANCE,TCS,INFY"]
+      - NSE_SCREENER_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NSE_SCREENER_DB_HOST=postgres
+      - NSE_SCREENER_DB_PORT=5432
+      - NSE_SCREENER_DB_NAME=${DB_NAME}
+      - NSE_SCREENER_DB_USERNAME=${DB_USERNAME}
+      - NSE_SCREENER_DB_PASSWORD=${DB_PASSWORD}
+      - NSE_SCREENER_REDIS_HOST=redis
+      - NSE_SCREENER_REDIS_PORT=6379
+      - NSE_SCREENER_REDIS_PASSWORD=${REDIS_PASSWORD}
+      - NSE_SCREENER_API_KEY_NSE=${API_KEY_NSE}
+      - NSE_SCREENER_API_KEY_YAHOO=${API_KEY_YAHOO}
+      - NSE_SCREENER_PROMETHEUS_PORT=8000
     
-  # Optional: Add a development service with source code mounting
+    # Volume mounts
+    volumes:
+      - ./data:/app/data:ro                    # Data directory (read-only)
+      - nse-output:/app/output                 # Output directory
+    
+    # Network configuration
+    networks:
+      - nse-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Depends on database and cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
+    # Security labels
+    labels:
+      - "security.hardened=true"
+      - "security.non-root=true"
+      - "security.read-only=true"
+
+  # PostgreSQL database with security hardening
+  postgres:
+    image: postgres:15-alpine
+    container_name: nse-screener-db
+    restart: unless-stopped
+    
+    # Security settings
+    user: "999:999"  # postgres user
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /var/run/postgresql:noexec,nosuid,size=10m
+    
+    # Environment variables
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    
+    # Volume for persistent storage
+    volumes:
+      - nse-postgres-data:/var/lib/postgresql/data
+    
+    # Network configuration
+    networks:
+      - nse-network
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Redis cache with authentication
+  redis:
+    image: redis:7-alpine
+    container_name: nse-screener-cache
+    restart: unless-stopped
+    
+    # Security settings
+    user: "999:999"  # redis user
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=50m
+    
+    # Redis configuration with security
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    
+    # Volume for persistence
+    volumes:
+      - nse-redis-data:/data
+    
+    # Network configuration
+    networks:
+      - nse-network
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.05'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Development service (for testing)
   nse-screener-dev:
     build:
       context: .
       dockerfile: Dockerfile
     image: nse-screener:latest
     container_name: nse-screener-dev
+    profiles: ["development"]
     volumes:
       - ./data:/app/data
       - ./output:/app/output
       - ./src:/app/src
-      - ./tests:/app/tests
     environment:
       - NSE_SCREENER_ENV=development
       - PYTHONPATH=/app/src
     networks:
-      - screener-network
-    command: ["tail", "-f", "/dev/null"]  # Keep container running for development
+      - nse-network
+    command: ["tail", "-f", "/dev/null"]
+
+  # Prometheus monitoring (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nse-screener-prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
     
-  # Optional: Add a testing service
-  nse-screener-test:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: nse-screener:latest
-    container_name: nse-screener-test
+    # Security settings
+    user: "65534:65534"  # nobody user
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    
+    # Configuration
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    
+    # Volume mounts
     volumes:
-      - ./src:/app/src:ro
-      - ./tests:/app/tests:ro
-      - ./test-output:/app/test-output
-    environment:
-      - NSE_SCREENER_ENV=test
-      - PYTHONPATH=/app/src
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - nse-prometheus-data:/prometheus
+    
+    # Network configuration
     networks:
-      - screener-network
-    command: ["python", "-m", "pytest", "tests/", "-v", "--cov=src"]
+      - nse-network
+    
+    # Expose port for monitoring
+    ports:
+      - "9090:9090"
 
+# Named volumes for data persistence
+volumes:
+  nse-postgres-data:
+    driver: local
+  nse-redis-data:
+    driver: local
+  nse-output:
+    driver: local
+  nse-prometheus-data:
+    driver: local
+
+# Custom network for service isolation
 networks:
-  screener-network:
+  nse-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
-# Usage:
-# Development: docker-compose up nse-screener-dev
-# Production: docker-compose up nse-screener
-# Testing: docker-compose up nse-screener-test
-# All services: docker-compose up
+# Usage Instructions:
+# Production: docker-compose up nse-screener postgres redis
+# Development: docker-compose --profile development up
+# With monitoring: docker-compose --profile monitoring up
+# All services: docker-compose --profile development --profile monitoring up
