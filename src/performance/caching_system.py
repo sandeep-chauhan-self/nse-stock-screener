@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Callable, Tuple
 import gzip
 import sqlite3
+from functools import wraps
 
 try:
     import redis
@@ -843,6 +844,30 @@ class SmartCache:
                 
         except Exception as e:
             logger.error(f"Error during cache cleanup: {e}")
+
+    def cached(self, ttl: Optional[int] = None):
+        """Decorator for caching function results."""
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                # Create cache key from function name and arguments
+                key_parts = [func.__name__, str(args), str(sorted(kwargs.items()))]
+                cache_key = self._generate_key(key_parts)
+                
+                # Try to get from cache
+                cached_result = self.get(cache_key)
+                if cached_result is not None:
+                    return cached_result
+                
+                # Compute result
+                result = func(*args, **kwargs)
+                
+                # Cache the result
+                self.set(cache_key, result, ttl or self.config.default_ttl)
+                
+                return result
+            return wrapper
+        return decorator
 
 
 # Global cache instance

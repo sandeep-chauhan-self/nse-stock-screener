@@ -276,6 +276,25 @@ volumes/
 .ipynb_checkpoints/
 
 # =============================================================================
+# Performance & Profiling
+# =============================================================================
+# Profiling output files (cProfile, line_profiler, etc.)
+*.prof
+*.profile
+*.pstats
+profiling_results/
+profiling_output/
+performance_profiles/
+
+# Memory profiling files
+*.mprofile
+memory_profiler/
+
+# Performance monitoring data
+prometheus_data/
+grafana_data/
+
+# =============================================================================
 # Project Specific
 # =============================================================================
 # NSE Stock Screener specific exclusions

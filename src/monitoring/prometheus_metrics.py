@@ -455,7 +455,7 @@ class AlertManager:
     def get_alert_summary(self) -> Dict[str, Any]:
         """Get summary of recent alerts."""
         recent_alerts = [a for a in self.alert_history if 
-                        (datetime.now() - a["timestamp"]).hours < 24]
+                        (datetime.now() - a["timestamp"]).total_seconds() / 3600 < 24]
         
         alert_counts = defaultdict(int)
         for alert in recent_alerts:

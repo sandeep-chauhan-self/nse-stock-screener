@@ -131,8 +131,7 @@ class PerformanceStack:
         """Initialize Prometheus monitoring."""
         metric_config = MetricConfig(
             prometheus_port=self.config.prometheus_port,
-            export_system_metrics=True,
-            enable_alerts=True
+            export_system_metrics=True
         )
         
         self.monitoring = initialize_monitoring(metric_config)
@@ -143,8 +142,7 @@ class PerformanceStack:
         parallel_config = ParallelConfig(
             max_workers=self.config.max_workers,
             batch_size=self.config.batch_size,
-            enable_async_io=self.config.enable_async_io,
-            enable_monitoring=True
+            enable_async_io=self.config.enable_async_io
         )
         
         self.parallel_processor = ParallelStockProcessor(parallel_config)
@@ -182,7 +180,7 @@ class PerformanceStack:
         self.grafana_provisioner.provision_all()
         logger.info("Grafana dashboards provisioned")
     
-    async def process_symbols_parallel(self, symbols: List[str], 
+    def process_symbols_parallel(self, symbols: List[str], 
                                      analysis_func: Optional[callable] = None) -> Dict[str, Any]:
         """Process symbols in parallel with full performance monitoring."""
         if not self.parallel_processor:
@@ -200,15 +198,18 @@ class PerformanceStack:
             # Use monitoring timer
             with self.monitoring.metrics.timer("batch_symbol_processing"):
                 # Process symbols using parallel engine
-                results = await self.parallel_processor.process_symbols_async(
+                raw_results = self.parallel_processor.process_symbol_universe(
                     symbols, analysis_func
                 )
+                
+                # Convert dict results to list format expected by metrics
+                results = list(raw_results.values()) if isinstance(raw_results, dict) else raw_results
                 
                 # Update metrics
                 self._update_performance_metrics(results)
                 
                 # Record business metrics
-                successful_count = sum(1 for r in results if r.get("status") == "success")
+                successful_count = len([r for r in results if isinstance(r, dict)])  # Count valid results
                 self.monitoring.metrics.symbols_processed.labels(status="success").inc(successful_count)
                 
                 failed_count = len(results) - successful_count
@@ -218,12 +219,12 @@ class PerformanceStack:
                 logger.info(f"Processed {successful_count}/{len(symbols)} symbols successfully")
                 
                 return {
-                    "results": results,
+                    "results": raw_results,  # Return original dict format
                     "total_symbols": len(symbols),
                     "successful": successful_count,
                     "failed": failed_count,
                     "cache_hit_rate": self._calculate_cache_hit_rate(),
-                    "processing_time": sum(r.get("processing_time", 0) for r in results)
+                    "processing_time": sum(r.get("processing_time", 0) for r in results if isinstance(r, dict))
                 }
         
         finally:
@@ -234,7 +235,7 @@ class PerformanceStack:
     def process_symbols_sync(self, symbols: List[str], 
                            analysis_func: Optional[callable] = None) -> Dict[str, Any]:
         """Synchronous wrapper for parallel symbol processing."""
-        return asyncio.run(self.process_symbols_parallel(symbols, analysis_func))
+        return self.process_symbols_parallel(symbols, analysis_func)
     
     def optimize_performance(self) -> Dict[str, Any]:
         """Run performance optimization analysis and recommendations."""
