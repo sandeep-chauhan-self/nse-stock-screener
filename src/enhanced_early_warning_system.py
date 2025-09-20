@@ -6,10 +6,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 import numpy as np
-import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from pathlib import Path
+import logging
+
+# Use enhanced data ingestion layer for robust data fetching
+from .data.compat import enhanced_yfinance as yf
 
 # Add the current directory to Python path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +30,9 @@ from advanced_indicators import AdvancedIndicator
 # from composite_scorer import CompositeScorer
 from advanced_backtester import AdvancedBacktester, BacktestConfig
 from risk_manager import RiskManager, RiskConfig
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 class EnhancedEarlyWarningSystem:
     """Enhanced Early Warning System with advanced technical analysis"""
@@ -133,15 +139,19 @@ class EnhancedEarlyWarningSystem:
     def detect_market_regime(self) -> MarketRegime:
         """Detect current market regime using NIFTY data"""
         try:
+            logger.info("Detecting market regime using NIFTY data")
             print("🌍 Detecting market regime...")
             
-            # Fetch NIFTY data
+            # Fetch NIFTY data using enhanced fetcher
             nifty = yf.Ticker("^NSEI")
-            data = nifty.history(period="3mo")
+            data = nifty.history(period="3mo", auto_adjust=True)
             
             if data.empty:
+                logger.warning("Could not fetch NIFTY data, using SIDEWAYS regime")
                 print("⚠️ Could not fetch NIFTY data, using SIDEWAYS regime")
                 return MarketRegime.SIDEWAYS
+            
+            logger.debug(f"Fetched {len(data)} NIFTY data points for regime detection")
             
             # Calculate regime indicators
             close = data['Close']
@@ -246,15 +256,19 @@ class EnhancedEarlyWarningSystem:
     def generate_enhanced_chart(self, symbol: str, indicators: Dict[str, Any]) -> Optional[str]:
         """Generate enhanced technical analysis chart"""
         try:
+            logger.debug(f"Generating enhanced chart for {symbol}")
             print(f"Generating enhanced chart for {symbol}...")
             
-            # Fetch data for charting
+            # Fetch data for charting using enhanced fetcher
             ticker = yf.Ticker(symbol)
-            data = ticker.history(period="6mo")
+            data = ticker.history(period="6mo", auto_adjust=True)
             
             if data.empty or len(data) < 50:
+                logger.warning(f"Insufficient data for {symbol} chart: {len(data)} rows")
                 print(f"Insufficient data for {symbol} chart")
                 return None
+            
+            logger.debug(f"Fetched {len(data)} data points for {symbol} chart")
             
             # Create comprehensive chart
             fig = plt.figure(figsize=(16, 12))

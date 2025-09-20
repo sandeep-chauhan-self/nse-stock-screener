@@ -3,6 +3,7 @@ Stock Symbol Fetcher - Downloads real stock symbols from various exchanges
 and saves them to a text file for use with the Early Warning System.
 
 Cross-platform compatible with proper path handling and command-line options.
+Enhanced with robust data fetching, retry logic, and caching.
 """
 
 import os
@@ -13,14 +14,21 @@ import time
 import random
 import argparse
 from bs4 import BeautifulSoup
-import yfinance as yf
 from pathlib import Path
+import logging
+
+# Use enhanced data ingestion layer for robust fetching
+from .data.compat import enhanced_yfinance as yf, enhanced_requests, get_nse_symbols
+from .data.validation import validate_symbol
 
 # Import path utilities for cross-platform compatibility
 from .common.paths import (
     PathManager, add_output_argument, resolve_output_path,
     get_data_path, get_temp_path, ensure_dir
 )
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Initialize path manager
 pm = PathManager()
@@ -29,93 +37,43 @@ pm = PathManager()
 DEFAULT_OUTPUT_FILE = "sample_stocks.txt"
 
 def fetch_nse_stocks():
-    """Fetch NSE (India) stock symbols"""
+    """Fetch NSE (India) stock symbols using enhanced data fetcher"""
+    logger.info("Fetching NSE stock symbols using enhanced data layer")
     print("Fetching NSE (India) stock list...")
     
     try:
-        # Create temp directory if it doesn't exist
-        temp_dir = pm.ensure_temp_dir()
+        # Use the enhanced NSE fetcher with caching and retry logic
+        symbols = get_nse_symbols(force_refresh=False)
         
-        # NSE list from NSE India website
-        url = "https://www1.nseindia.com/content/indices/ind_nifty500list.csv"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Cache-Control': 'max-age=0',
-            'Referer': 'https://www1.nseindia.com/'
-        }
-        
-        # Try an alternative source if the primary one fails
-        try:
-            print("Trying primary source...")
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code != 200:
-                raise Exception(f"Failed with status code: {response.status_code}")
-                
-            # Save the CSV temporarily
-            temp_file = pm.get_temp_path("nse_temp.csv")
-            temp_file.write_bytes(response.content)
+        if symbols:
+            # Add .NS suffix for Yahoo Finance compatibility
+            symbols_with_suffix = [f"{symbol}.NS" for symbol in symbols]
+            logger.info(f"Successfully fetched {len(symbols_with_suffix)} NSE symbols")
+            print(f"✅ Successfully fetched {len(symbols_with_suffix)} NSE symbols")
+            return symbols_with_suffix
+        else:
+            # Fallback to hardcoded list if enhanced fetcher fails
+            logger.warning("Enhanced NSE fetcher failed, using fallback list")
+            print("⚠️ Using fallback NSE stock list...")
             
-            # Read the CSV
-            df = pd.read_csv(temp_file)
-            symbols = df["Symbol"].tolist()
-            
-            # Clean up
-            temp_file.unlink()
-            
-            # Add .NS suffix for Yahoo Finance
-            symbols = [f"{symbol}.NS" for symbol in symbols]
-            return symbols
-            
-        except Exception as e:
-            print(f"Primary source failed: {e}")
-            print("Trying alternative source...")
-            
-            # Try an alternative source - NIFTY 50 index
-            alt_url = "https://archives.nseindia.com/content/indices/ind_nifty50list.csv"
-            response = requests.get(alt_url, headers=headers, timeout=10)
-            
-            if response.status_code == 200:
-                # Save the CSV temporarily
-                temp_file = pm.get_temp_path("nse_temp.csv")
-                temp_file.write_bytes(response.content)
-                
-                # Read the CSV
-                df = pd.read_csv(temp_file)
-                symbols = df["Symbol"].tolist()
-                
-                # Clean up
-                temp_file.unlink()
-                
-                # Add .NS suffix for Yahoo Finance
-                symbols = [f"{symbol}.NS" for symbol in symbols]
-                return symbols
-            else:
-                # Try fetching directly from Yahoo Finance top stocks in India
-                print("Trying Yahoo Finance top Indian stocks...")
-                
-                # Predefined list of top NSE stocks as fallback
-                top_nse_stocks = [
-                    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
-                    "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "HDFC.NS", "BAJFINANCE.NS",
-                    "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS",
-                    "MARUTI.NS", "HCLTECH.NS", "SUNPHARMA.NS", "TITAN.NS", "BAJAJFINSV.NS",
-                    "TATASTEEL.NS", "NTPC.NS", "POWERGRID.NS", "ULTRACEMCO.NS", "TATAMOTORS.NS",
-                    "JSWSTEEL.NS", "TECHM.NS", "ADANIENT.NS", "WIPRO.NS", "M&M.NS",
-                    "DIVISLAB.NS", "NESTLEIND.NS", "GRASIM.NS", "SBILIFE.NS", "HINDALCO.NS",
-                    "APOLLOHOSP.NS", "DRREDDY.NS", "COALINDIA.NS", "HDFCLIFE.NS", "ONGC.NS",
-                    "BAJAJ-AUTO.NS", "INDUSINDBK.NS", "UPL.NS", "CIPLA.NS", "BPCL.NS",
-                    "EICHERMOT.NS", "ADANIPORTS.NS", "BRITANNIA.NS", "HEROMOTOCO.NS", "TATACONSUM.NS"
-                ]
-                print(f"Fetched {len(top_nse_stocks)} top NSE stocks from fallback list")
-                return top_nse_stocks
+            top_nse_stocks = [
+                "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
+                "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "HDFC.NS", "BAJFINANCE.NS",
+                "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS",
+                "MARUTI.NS", "HCLTECH.NS", "SUNPHARMA.NS", "TITAN.NS", "BAJAJFINSV.NS",
+                "TATASTEEL.NS", "NTPC.NS", "POWERGRID.NS", "ULTRACEMCO.NS", "TATAMOTORS.NS",
+                "JSWSTEEL.NS", "TECHM.NS", "ADANIENT.NS", "WIPRO.NS", "M&M.NS",
+                "DIVISLAB.NS", "NESTLEIND.NS", "GRASIM.NS", "SBILIFE.NS", "HINDALCO.NS",
+                "APOLLOHOSP.NS", "DRREDDY.NS", "COALINDIA.NS", "HDFCLIFE.NS", "ONGC.NS",
+                "BAJAJ-AUTO.NS", "INDUSINDBK.NS", "UPL.NS", "CIPLA.NS", "BPCL.NS",
+                "EICHERMOT.NS", "ADANIPORTS.NS", "BRITANNIA.NS", "HEROMOTOCO.NS", "TATACONSUM.NS"
+            ]
+            print(f"📋 Using fallback list with {len(top_nse_stocks)} top NSE stocks")
+            return top_nse_stocks
         
     except Exception as e:
-        print(f"Error fetching NSE stocks: {e}")
+        logger.error(f"Error in NSE stock fetching: {e}")
+        print(f"❌ Error fetching NSE stocks: {e}")
         return []
 
 def fetch_us_stocks():
@@ -443,7 +401,8 @@ def fetch_ftse_100():
         return []
 
 def validate_symbols(symbols, max_to_check=100):
-    """Validate that symbols exist on Yahoo Finance"""
+    """Validate that symbols exist using enhanced data fetcher"""
+    logger.info(f"Validating symbols using enhanced data fetcher (checking up to {max_to_check} random symbols)")
     print(f"Validating symbols (checking up to {max_to_check} random symbols)...")
     
     valid_symbols = []
@@ -455,21 +414,23 @@ def validate_symbols(symbols, max_to_check=100):
     for i, symbol in enumerate(to_check):
         print(f"Checking symbol {i+1}/{len(to_check)}: {symbol}")
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            # Use enhanced validation from our data layer
+            is_valid = validate_symbol(symbol)
             
-            # Check if we got valid data
-            if 'symbol' in info:
+            if is_valid:
                 valid_symbols.append(symbol)
-                print(f"✓ Valid: {symbol} - {info.get('shortName', 'Unknown')}")
+                print(f"✓ Valid: {symbol}")
             else:
                 print(f"✗ Invalid: {symbol}")
                 
             # Be gentle with the API
-            time.sleep(1)
+            time.sleep(0.5)
+            
         except Exception as e:
+            logger.warning(f"Error checking {symbol}: {e}")
             print(f"✗ Error checking {symbol}: {e}")
     
+    logger.info(f"Validated {len(valid_symbols)}/{len(to_check)} symbols")
     # Return both the validated subset and the full list
     return valid_symbols, symbols
 

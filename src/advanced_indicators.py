@@ -5,10 +5,15 @@ Implements comprehensive technical analysis indicators for the upgraded stock sc
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from typing import Dict, Optional, Tuple, Any
 import warnings
+import logging
+
+# Use enhanced data ingestion layer for robust data fetching
+from .data.compat import enhanced_yfinance as yf
+
 warnings.filterwarnings('ignore')
+logger = logging.getLogger(__name__)
 
 class AdvancedIndicator:
     """
@@ -29,11 +34,13 @@ class AdvancedIndicator:
         """Fetch NIFTY data for relative strength calculations"""
         try:
             if self.nifty_data is None:
+                logger.debug(f"Fetching NIFTY data with period: {period}")
                 nifty = yf.Ticker(self.nifty_symbol)
-                self.nifty_data = nifty.history(period=period)
+                self.nifty_data = nifty.history(period=period, auto_adjust=True)
+                logger.debug(f"Fetched {len(self.nifty_data)} NIFTY data points")
             return self.nifty_data
         except Exception as e:
-            print(f"Warning: Could not fetch NIFTY data: {e}")
+            logger.warning(f"Could not fetch NIFTY data: {e}")
             return None
     
     def compute_volume_signals(self, data: pd.DataFrame) -> Dict[str, float]:
@@ -368,13 +375,16 @@ class AdvancedIndicator:
         - Weekly volume trend
         """
         try:
-            # All symbols should already have the .NS suffix
-            # Fetch weekly data
+            # Use enhanced data fetching with automatic retry and caching
+            logger.debug(f"Fetching weekly data for {symbol}")
             ticker = yf.Ticker(symbol)
-            weekly_data = ticker.history(period="6mo", interval="1wk")
+            weekly_data = ticker.history(period="6mo", interval="1wk", auto_adjust=True)
             
             if weekly_data is None or len(weekly_data) < 15 or weekly_data.empty:
+                logger.warning(f"Insufficient weekly data for {symbol}: {len(weekly_data) if weekly_data is not None else 0} rows")
                 return {'weekly_rsi_trend': 0, 'weekly_macd_bullish': False, 'weekly_vol_trend': 0}
+            
+            logger.debug(f"Fetched {len(weekly_data)} weekly data points for {symbol}")
             
             # Weekly RSI
             close = weekly_data['Close']
@@ -460,7 +470,7 @@ class AdvancedIndicator:
             return all_indicators
             
         except Exception as e:
-            print(f"Error computing indicators for {symbol}: {e}")
+            logger.error(f"Error computing indicators for {symbol}: {e}")
             return None
 
 # Example usage and testing

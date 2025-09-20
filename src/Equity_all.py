@@ -3,6 +3,7 @@ NSE Equity Symbol Fetcher
 
 Downloads NSE equity symbols from the official NSE archives and saves them
 to a text file. Cross-platform compatible with proper path handling.
+Enhanced with robust data fetching, retry logic, and caching.
 
 Usage:
     python Equity_all.py --output my_symbols.txt
@@ -10,72 +11,51 @@ Usage:
 """
 
 import argparse
-import requests
-import pandas as pd
-from io import StringIO
 from pathlib import Path
+import logging
+
+# Use enhanced data ingestion layer
+from .data.compat import get_nse_symbols
 
 # Import path utilities for cross-platform compatibility
 from .common.paths import (
     add_output_argument, resolve_output_path, ensure_dir
 )
 
+# Set up logging
+logger = logging.getLogger(__name__)
+
 # Default output file
 DEFAULT_OUTPUT_FILE = "nse_only_symbols.txt"
-
-# NSE master equity list URL
-NSE_EQUITY_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
-
-# HTTP headers to mimic browser request
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/114.0.0.0 Safari/537.36"
-}
 
 
 def fetch_nse_symbols():
     """
-    Fetch NSE equity symbols from the official NSE archives.
+    Fetch NSE equity symbols using enhanced data fetcher.
     
     Returns:
         List of symbol strings, or None if fetch failed
     """
     try:
-        print("📡 Fetching NSE equity symbols from official archives...")
-        print(f"🌐 URL: {NSE_EQUITY_URL}")
+        logger.info("Fetching NSE equity symbols using enhanced data layer")
+        print("📡 Fetching NSE equity symbols from enhanced data layer...")
         
-        # Fetch CSV directly into memory
-        response = requests.get(NSE_EQUITY_URL, headers=HEADERS, timeout=30)
-        response.raise_for_status()  # Raise exception for bad status codes
+        # Use the enhanced NSE fetcher with caching and retry logic
+        symbols = get_nse_symbols(force_refresh=True)  # Force refresh for latest data
         
-        print(f"✅ Successfully downloaded data ({len(response.text)} characters)")
+        if symbols:
+            logger.info(f"Successfully fetched {len(symbols)} NSE symbols")
+            print(f"✅ Successfully downloaded {len(symbols)} symbols")
+            print(f"📊 Extracted {len(symbols)} valid symbols")
+            return symbols
+        else:
+            logger.error("Enhanced NSE fetcher returned no symbols")
+            print("❌ Failed to fetch symbols using enhanced data layer")
+            return None
         
-        # Parse CSV data
-        data = StringIO(response.text)
-        df = pd.read_csv(data)
-        
-        print(f"📊 Parsed CSV with {len(df)} rows and columns: {list(df.columns)}")
-        
-        # Extract symbols
-        if "SYMBOL" not in df.columns:
-            available_columns = list(df.columns)
-            raise ValueError(f"Expected 'SYMBOL' column not found. Available columns: {available_columns}")
-        
-        symbols = df["SYMBOL"].dropna().astype(str).tolist()
-        symbols = [symbol.strip() for symbol in symbols if symbol.strip()]  # Clean up symbols
-        
-        print(f"🎯 Extracted {len(symbols)} valid symbols")
-        return symbols
-        
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Network error while fetching NSE data: {e}")
-        return None
-    except pd.errors.EmptyDataError:
-        print("❌ Downloaded file is empty or corrupted")
-        return None
     except Exception as e:
-        print(f"❌ Error processing NSE data: {e}")
+        logger.error(f"Error fetching NSE symbols: {e}")
+        print(f"❌ Error fetching NSE data: {e}")
         return None
 
 
