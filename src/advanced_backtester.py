@@ -11,6 +11,10 @@ from typing import Dict, List, Tuple, Optional, Any
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 import warnings
+
+# Import centralized configuration
+from .config import SystemConfig, get_config
+
 warnings.filterwarnings('ignore')
 
 @dataclass
@@ -32,21 +36,6 @@ class TradeResult:
     dollar_profit: float
     risk_amount: float
 
-@dataclass
-class BacktestConfig:
-    """Backtesting configuration"""
-    initial_capital: float = 1000000  # 10 lakh
-    risk_per_trade: float = 0.01  # 1% of portfolio per trade
-    transaction_cost: float = 0.0005  # 0.05% per side (0.1% total)
-    slippage: float = 0.0005  # 0.05% slippage
-    stop_loss_atr_multiplier: float = 2.0  # 2x ATR for stop loss
-    take_profit_multiplier: float = 2.5  # 2.5x risk for take profit
-    max_holding_days: int = 30  # Maximum days to hold a position
-    min_score_threshold: int = 45  # Minimum composite score to enter trade
-    max_positions: int = 10  # Maximum concurrent positions
-    walk_forward_window: int = 252  # 1 year training window
-    test_window: int = 63  # 3 months test window
-
 class AdvancedBacktester:
     """
     Advanced backtesting system with:
@@ -58,8 +47,8 @@ class AdvancedBacktester:
     - Risk management
     """
     
-    def __init__(self, config: BacktestConfig = None):
-        self.config = config or BacktestConfig()
+    def __init__(self, config: Optional[SystemConfig] = None):
+        self.config = config or get_config()
         self.trades: List[TradeResult] = []
         self.portfolio_value_history: List[Tuple[datetime, float]] = []
         self.daily_returns: List[float] = []
@@ -82,7 +71,7 @@ class AdvancedBacktester:
         quantity = int(dollar_risk / price_risk)
         
         # Ensure we don't risk more than intended
-        max_position_value = portfolio_value * 0.1  # Max 10% per position
+        max_position_value = portfolio_value * self.config.max_position_size  # Use centralized config
         max_quantity = int(max_position_value / entry_price)
         
         return min(quantity, max_quantity)
@@ -226,7 +215,7 @@ class AdvancedBacktester:
         
         # Initialize
         current_date = start_date
-        portfolio_value = self.config.initial_capital
+        portfolio_value = self.config.portfolio_capital
         active_positions = {}  # {symbol: TradeResult}
         all_trades = []
         portfolio_history = [(current_date, portfolio_value)]
@@ -444,8 +433,8 @@ class AdvancedBacktester:
             total_return = 0
             sharpe_ratio = 0
             max_drawdown = 0
-            initial_capital = self.config.initial_capital
-            final_capital = self.config.initial_capital
+            initial_capital = self.config.portfolio_capital
+            final_capital = self.config.portfolio_capital
         
         # Exit reason analysis
         exit_reasons = df['exit_reason'].value_counts().to_dict()
@@ -576,8 +565,10 @@ SIGNAL SCORE ANALYSIS
 # Example usage
 if __name__ == "__main__":
     # Test the backtesting framework
-    config = BacktestConfig(
-        initial_capital=1000000,
+    from .config import SystemConfig
+    
+    config = SystemConfig(
+        portfolio_capital=1000000,
         risk_per_trade=0.01,
         min_score_threshold=50
     )

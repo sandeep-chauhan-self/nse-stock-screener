@@ -22,14 +22,21 @@ sys.path.append(current_dir)
 from .common.paths import PathManager, get_data_path, get_output_path, ensure_dir
 
 # Import shared enums from centralized location
-from common.enums import MarketRegime
+try:
+    from .common.enums import MarketRegime
+except ImportError:
+    # Fallback for direct execution
+    from src.common.enums import MarketRegime
 
 # Import our enhanced modules
 from advanced_indicators import AdvancedIndicator
 # We'll import CompositeScorer at runtime to avoid circular import issues
 # from composite_scorer import CompositeScorer
-from advanced_backtester import AdvancedBacktester, BacktestConfig
-from risk_manager import RiskManager, RiskConfig
+from advanced_backtester import AdvancedBacktester
+from risk_manager import RiskManager
+
+# Import centralized configuration
+from .config import SystemConfig, get_config
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -39,7 +46,8 @@ class EnhancedEarlyWarningSystem:
     
     def __init__(self, custom_stocks: Optional[List[str]] = None, 
                  input_file: Optional[str] = None,
-                 batch_size: int = 50, timeout: int = 10):
+                 batch_size: int = 50, timeout: int = 10,
+                 config: Optional[SystemConfig] = None):
         """
         Initialize Enhanced Early Warning System
         
@@ -48,7 +56,11 @@ class EnhancedEarlyWarningSystem:
             input_file: Path to file containing stock symbols
             batch_size: Number of stocks to process in each batch
             timeout: Seconds to wait between batches
+            config: System configuration (optional, uses defaults if not provided)
         """
+        # Use provided config or get default
+        self.config = config or get_config()
+        
         self.batch_size = batch_size
         self.timeout = timeout
         self.market_regime = MarketRegime.SIDEWAYS
@@ -67,18 +79,10 @@ class EnhancedEarlyWarningSystem:
         from composite_scorer import CompositeScorer
         self.scorer = CompositeScorer()
         
-        # Create risk config
-        risk_config = RiskConfig(
-            max_portfolio_risk=0.02,  # 2% portfolio risk
-            max_position_size=0.005,  # 0.5% per position
-            max_daily_loss=0.01,  # 1% max daily loss
-            max_concurrent_positions=10
-        )
-        
-        # Initialize risk manager with config
+        # Initialize risk manager with centralized config
         self.risk_manager = RiskManager(
-            initial_capital=1000000,  # 10 Lakh initial capital
-            config=risk_config
+            initial_capital=self.config.portfolio_capital,
+            config=self.config
         )
         
         print(f"✅ Enhanced Early Warning System initialized")
@@ -707,12 +711,12 @@ class EnhancedEarlyWarningSystem:
                 })
         
         # Setup backtester
-        config = BacktestConfig(
-            initial_capital=50000,  # 50K
+        backtest_config = SystemConfig(
+            portfolio_capital=50000,  # 50K
             risk_per_trade=0.01,
             min_score_threshold=45
         )
-        backtester = AdvancedBacktester(config)
+        backtester = AdvancedBacktester(backtest_config)
         
         # Run backtest
         try:

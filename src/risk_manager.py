@@ -10,8 +10,15 @@ from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+# Import centralized configuration
+from .config import SystemConfig, get_config
+
 # Import shared enums from centralized location
-from common.enums import PositionStatus, StopType
+try:
+    from .common.enums import PositionStatus, StopType
+except ImportError:
+    # Fallback for direct execution
+    from src.common.enums import PositionStatus, StopType
 
 @dataclass
 class Position:
@@ -40,21 +47,6 @@ class Position:
         if price > self.max_price_since_entry:
             self.max_price_since_entry = price
 
-@dataclass
-class RiskConfig:
-    """Risk management configuration"""
-    max_portfolio_risk: float = 0.20  # 20% max portfolio at risk
-    max_position_size: float = 0.10   # 10% max per position
-    max_daily_loss: float = 0.02      # 2% max daily loss
-    max_monthly_loss: float = 0.08    # 8% max monthly loss
-    max_sector_exposure: float = 0.30  # 30% max per sector
-    max_concurrent_positions: int = 10
-    min_risk_reward_ratio: float = 2.0
-    stop_loss_atr_multiplier: float = 2.0
-    breakeven_trigger_ratio: float = 1.5  # Move to breakeven after 1.5x risk
-    trailing_stop_atr_multiplier: float = 1.0  # Trail at 1x ATR
-    correlation_limit: float = 0.7    # Max correlation between positions
-
 class RiskManager:
     """
     Comprehensive risk management system with:
@@ -66,10 +58,10 @@ class RiskManager:
     - Daily and monthly loss limits
     """
     
-    def __init__(self, initial_capital: float, config: RiskConfig = None):
+    def __init__(self, initial_capital: float, config: Optional[SystemConfig] = None):
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
-        self.config = config or RiskConfig()
+        self.config = config or get_config()
         
         # Position tracking
         self.positions: Dict[str, Position] = {}
@@ -95,7 +87,7 @@ class RiskManager:
         - Current exposure
         """
         # Base risk per trade (adjusted by signal strength)
-        base_risk = 0.01  # 1% base risk
+        base_risk = self.config.risk_per_trade  # Use centralized config
         
         # Adjust risk based on signal strength
         if signal_score >= 70:
@@ -170,11 +162,11 @@ class RiskManager:
             'max_risk_limit': self.config.max_portfolio_risk * 100,
             'max_exposure_limit': 100,  # Full capital can be deployed
             'positions_count': len(self.positions),
-            'max_positions': self.config.max_concurrent_positions,
+            'max_positions': self.config.max_positions,  # Use canonical name
             'risk_limit_ok': risk_utilization <= self.config.max_portfolio_risk,
-            'position_limit_ok': len(self.positions) < self.config.max_concurrent_positions,
+            'position_limit_ok': len(self.positions) < self.config.max_positions,  # Use canonical name
             'can_add_position': (risk_utilization <= self.config.max_portfolio_risk * 0.8 and 
-                               len(self.positions) < self.config.max_concurrent_positions)
+                               len(self.positions) < self.config.max_positions)  # Use canonical name
         }
         
         return limits_status
@@ -428,8 +420,17 @@ class RiskManager:
 # Example usage and testing
 if __name__ == "__main__":
     # Test the risk management system
-    initial_capital = 1000000  # 10 lakh
-    risk_manager = RiskManager(initial_capital)
+    from .config import SystemConfig
+    
+    # Create custom configuration for testing
+    test_config = SystemConfig(
+        portfolio_capital=1000000,  # 10 lakh
+        max_positions=10,
+        risk_per_trade=0.01,
+        max_position_size=0.10
+    )
+    
+    risk_manager = RiskManager(test_config.portfolio_capital, test_config)
     
     # Test position entry
     symbol = "RELIANCE.NS"
