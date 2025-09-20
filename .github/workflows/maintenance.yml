@@ -1,0 +1,407 @@
+# Scheduled Maintenance and Health Checks
+# Regular monitoring and maintenance tasks
+
+name: Scheduled Maintenance
+
+on:
+  schedule:
+    # Run every day at 2 AM UTC
+    - cron: '0 2 * * *'
+    # Run dependency check weekly on Sundays at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      check_type:
+        description: 'Type of check to run'
+        required: true
+        default: 'health'
+        type: choice
+        options:
+        - health
+        - dependencies
+        - security
+        - performance
+        - all
+
+env:
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  # Job 1: Health Check
+  health-check:
+    name: System Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.inputs.check_type == 'health' || github.event.inputs.check_type == 'all' || github.event_name == 'schedule'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[dev,test]
+
+    - name: Run health checks
+      run: |
+        echo "::group::System Health Check"
+        python -c "
+import sys
+import pkg_resources
+import platform
+from datetime import datetime
+
+print('=== System Health Report ===')
+print(f'Date: {datetime.now().isoformat()}')
+print(f'Python Version: {sys.version}')
+print(f'Platform: {platform.platform()}')
+print(f'Architecture: {platform.architecture()}')
+print()
+
+print('=== Package Health ===')
+try:
+    import src
+    print('✅ Main package imports successfully')
+except Exception as e:
+    print(f'❌ Main package import failed: {e}')
+
+try:
+    from src.composite_scorer import CompositeScorer
+    print('✅ Core modules import successfully')
+except Exception as e:
+    print(f'❌ Core module import failed: {e}')
+
+print()
+print('=== Dependency Status ===')
+dependencies = [
+    'pandas', 'numpy', 'matplotlib', 'seaborn', 
+    'yfinance', 'requests', 'beautifulsoup4'
+]
+
+for dep in dependencies:
+    try:
+        version = pkg_resources.get_distribution(dep).version
+        print(f'✅ {dep}: {version}')
+    except:
+        print(f'❌ {dep}: Not installed')
+        "
+        echo "::endgroup::"
+
+    - name: Test basic functionality
+      run: |
+        echo "::group::Functionality Test"
+        python -c "
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+
+# Test data creation
+print('Testing data operations...')
+dates = pd.date_range(start='2023-01-01', end='2023-01-10', freq='D')
+test_data = pd.DataFrame({
+    'Date': dates,
+    'Open': np.random.uniform(100, 200, len(dates)),
+    'High': np.random.uniform(150, 250, len(dates)),
+    'Low': np.random.uniform(50, 150, len(dates)),
+    'Close': np.random.uniform(80, 220, len(dates)),
+    'Volume': np.random.randint(1000, 10000, len(dates))
+})
+
+print(f'✅ Created test DataFrame with {len(test_data)} rows')
+print(f'✅ Date range: {test_data[\"Date\"].min()} to {test_data[\"Date\"].max()}')
+
+# Test calculations
+test_data['MA_5'] = test_data['Close'].rolling(window=5).mean()
+test_data['RSI'] = 50  # Placeholder
+print('✅ Basic calculations work')
+
+print('=== Health Check Completed Successfully ===')
+        "
+        echo "::endgroup::"
+
+  # Job 2: Dependency Security Check
+  dependency-security:
+    name: Dependency Security Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event.inputs.check_type == 'dependencies' || github.event.inputs.check_type == 'security' || github.event.inputs.check_type == 'all' || github.event_name == 'schedule'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install security tools
+      run: |
+        pip install safety pip-audit
+
+    - name: Run Safety check
+      run: |
+        echo "::group::Safety Security Check"
+        safety check --json --output safety-report.json || true
+        safety check --short-report
+        echo "::endgroup::"
+
+    - name: Run pip-audit
+      run: |
+        echo "::group::Pip Audit Check"
+        pip-audit --format=json --output=pip-audit-report.json || true
+        pip-audit --format=text
+        echo "::endgroup::"
+
+    - name: Check for outdated packages
+      run: |
+        echo "::group::Outdated Packages"
+        pip list --outdated --format=json > outdated-packages.json
+        pip list --outdated
+        echo "::endgroup::"
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports-${{ github.run_id }}
+        path: |
+          safety-report.json
+          pip-audit-report.json
+          outdated-packages.json
+
+  # Job 3: Performance Monitoring
+  performance-monitoring:
+    name: Performance Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event.inputs.check_type == 'performance' || github.event.inputs.check_type == 'all' || github.event_name == 'schedule'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        pip install -e .[dev,test]
+        pip install memory-profiler pytest-benchmark
+
+    - name: Run performance benchmarks
+      run: |
+        echo "::group::Performance Benchmarks"
+        python -c "
+import time
+import psutil
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+print('=== Performance Monitoring Report ===')
+print(f'Timestamp: {datetime.now().isoformat()}')
+print()
+
+# System metrics
+print('=== System Metrics ===')
+print(f'CPU Count: {psutil.cpu_count()}')
+print(f'Memory Total: {psutil.virtual_memory().total / 1024**3:.2f} GB')
+print(f'Memory Available: {psutil.virtual_memory().available / 1024**3:.2f} GB')
+print(f'Memory Usage: {psutil.virtual_memory().percent}%')
+print(f'Disk Usage: {psutil.disk_usage(\"/\").percent}%')
+print()
+
+# Performance tests
+print('=== Performance Tests ===')
+
+# Test 1: DataFrame operations
+start_time = time.time()
+df = pd.DataFrame(np.random.randn(10000, 5))
+df['ma'] = df[0].rolling(window=20).mean()
+df['std'] = df[0].rolling(window=20).std()
+end_time = time.time()
+print(f'✅ DataFrame operations (10k rows): {end_time - start_time:.3f}s')
+
+# Test 2: Mathematical calculations
+start_time = time.time()
+arr = np.random.randn(100000)
+result = np.sqrt(np.sum(arr ** 2))
+end_time = time.time()
+print(f'✅ NumPy calculations (100k elements): {end_time - start_time:.3f}s')
+
+# Test 3: File I/O
+start_time = time.time()
+df.to_csv('/tmp/test_performance.csv')
+df_loaded = pd.read_csv('/tmp/test_performance.csv')
+end_time = time.time()
+print(f'✅ File I/O operations: {end_time - start_time:.3f}s')
+
+print()
+print('=== Performance Check Completed ===')
+        "
+        echo "::endgroup::"
+
+  # Job 4: Code Quality Metrics
+  code-quality-metrics:
+    name: Code Quality Metrics
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.inputs.check_type == 'all' || github.event_name == 'schedule'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install analysis tools
+      run: |
+        pip install radon xenon bandit ruff mypy
+
+    - name: Analyze code complexity
+      run: |
+        echo "::group::Code Complexity Analysis"
+        echo "=== Cyclomatic Complexity ==="
+        radon cc src --show-complexity --min=C
+        echo ""
+        echo "=== Maintainability Index ==="
+        radon mi src --show --min=C
+        echo ""
+        echo "=== Halstead Metrics ==="
+        radon hal src
+        echo "::endgroup::"
+
+    - name: Check code quality
+      run: |
+        echo "::group::Code Quality Check"
+        ruff check src --statistics
+        echo "::endgroup::"
+
+    - name: Type coverage
+      run: |
+        echo "::group::Type Coverage"
+        mypy src --config-file=mypy.ini --any-exprs-report mypy-report || true
+        if [ -f mypy-report/any-exprs.txt ]; then
+          echo "Files with untyped expressions:"
+          cat mypy-report/any-exprs.txt
+        fi
+        echo "::endgroup::"
+
+  # Job 5: Generate Health Report
+  generate-report:
+    name: Generate Health Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [health-check, dependency-security, performance-monitoring, code-quality-metrics]
+    if: always()
+    
+    steps:
+    - name: Create health report
+      run: |
+        echo "# 🏥 System Health Report" > health-report.md
+        echo "" >> health-report.md
+        echo "**Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> health-report.md
+        echo "**Workflow Run**: ${{ github.run_id }}" >> health-report.md
+        echo "" >> health-report.md
+        
+        echo "## 📊 Check Results" >> health-report.md
+        echo "" >> health-report.md
+        
+        # Health check status
+        if [ "${{ needs.health-check.result }}" == "success" ]; then
+          echo "✅ **System Health**: All systems operational" >> health-report.md
+        elif [ "${{ needs.health-check.result }}" == "failure" ]; then
+          echo "❌ **System Health**: Issues detected" >> health-report.md
+        else
+          echo "⏭️ **System Health**: Skipped" >> health-report.md
+        fi
+        
+        # Security check status
+        if [ "${{ needs.dependency-security.result }}" == "success" ]; then
+          echo "✅ **Security**: No vulnerabilities found" >> health-report.md
+        elif [ "${{ needs.dependency-security.result }}" == "failure" ]; then
+          echo "❌ **Security**: Vulnerabilities detected" >> health-report.md
+        else
+          echo "⏭️ **Security**: Skipped" >> health-report.md
+        fi
+        
+        # Performance check status
+        if [ "${{ needs.performance-monitoring.result }}" == "success" ]; then
+          echo "✅ **Performance**: Within acceptable ranges" >> health-report.md
+        elif [ "${{ needs.performance-monitoring.result }}" == "failure" ]; then
+          echo "❌ **Performance**: Performance issues detected" >> health-report.md
+        else
+          echo "⏭️ **Performance**: Skipped" >> health-report.md
+        fi
+        
+        # Code quality status
+        if [ "${{ needs.code-quality-metrics.result }}" == "success" ]; then
+          echo "✅ **Code Quality**: Metrics within targets" >> health-report.md
+        elif [ "${{ needs.code-quality-metrics.result }}" == "failure" ]; then
+          echo "❌ **Code Quality**: Quality issues found" >> health-report.md
+        else
+          echo "⏭️ **Code Quality**: Skipped" >> health-report.md
+        fi
+        
+        echo "" >> health-report.md
+        echo "## 🔧 Recommended Actions" >> health-report.md
+        echo "" >> health-report.md
+        
+        # Check if any jobs failed
+        if [ "${{ needs.health-check.result }}" == "failure" ] || 
+           [ "${{ needs.dependency-security.result }}" == "failure" ] || 
+           [ "${{ needs.performance-monitoring.result }}" == "failure" ] || 
+           [ "${{ needs.code-quality-metrics.result }}" == "failure" ]; then
+          echo "- 🔍 Review failed checks and take corrective action" >> health-report.md
+          echo "- 📋 Check uploaded artifacts for detailed reports" >> health-report.md
+          echo "- 🚀 Re-run specific checks after fixes are applied" >> health-report.md
+        else
+          echo "- ✨ All systems are healthy - no action required" >> health-report.md
+          echo "- 📈 Continue regular monitoring schedule" >> health-report.md
+        fi
+        
+        echo "" >> health-report.md
+        echo "---" >> health-report.md
+        echo "*This report is automatically generated by the scheduled maintenance workflow.*" >> health-report.md
+
+    - name: Upload health report
+      uses: actions/upload-artifact@v3
+      with:
+        name: health-report-${{ github.run_id }}
+        path: health-report.md
+
+    - name: Create issue on failure
+      if: needs.health-check.result == 'failure' || needs.dependency-security.result == 'failure' || needs.performance-monitoring.result == 'failure'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🚨 Scheduled Health Check Failed - ${new Date().toISOString().split('T')[0]}`,
+            body: `## Health Check Failure Report
+            
+            One or more scheduled health checks have failed. Please review the workflow run for details.
+            
+            **Workflow Run**: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+            
+            **Failed Checks**:
+            - Health Check: ${{ needs.health-check.result }}
+            - Security Check: ${{ needs.dependency-security.result }}
+            - Performance Check: ${{ needs.performance-monitoring.result }}
+            - Code Quality: ${{ needs.code-quality-metrics.result }}
+            
+            Please investigate and resolve the issues.`,
+            labels: ['maintenance', 'health-check', 'automated']
+          })

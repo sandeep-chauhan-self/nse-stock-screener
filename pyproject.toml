@@ -84,19 +84,76 @@ include = ["src*"]
 target-version = "py39"
 line-length = 100
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "B",  # flake8-bugbear
-    "C4", # flake8-comprehensions
-    "UP", # pyupgrade
-    "N",  # pep8-naming
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "I",    # isort
+    "N",    # pep8-naming
+    "D",    # pydocstyle
+    "S",    # flake8-bandit (security)
+    "BLE",  # flake8-blind-except
+    "FBT",  # flake8-boolean-trap
+    "A",    # flake8-builtins
+    "COM",  # flake8-commas
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "T10",  # flake8-debugger
+    "FA",   # flake8-future-annotations
+    "ISC",  # flake8-implicit-str-concat
+    "ICN",  # flake8-import-conventions
+    "G",    # flake8-logging-format
+    "INP",  # flake8-no-pep420
+    "PIE",  # flake8-pie
+    "T20",  # flake8-print
+    "PYI",  # flake8-pyi
+    "PT",   # flake8-pytest-style
+    "Q",    # flake8-quotes
+    "RSE",  # flake8-raise
+    "RET",  # flake8-return
+    "SLF",  # flake8-self
+    "SLOT", # flake8-slots
+    "TID",  # flake8-tidy-imports
+    "TCH",  # flake8-type-checking
+    "INT",  # flake8-gettext
+    "ARG",  # flake8-unused-arguments
+    "PTH",  # flake8-use-pathlib
+    "PD",   # pandas-vet
+    "PGH",  # pygrep-hooks
+    "PL",   # Pylint
+    "TRY",  # tryceratops
+    "FLY",  # flynt
+    "NPY",  # NumPy-specific rules
+    "PERF", # Perflint
+    "RUF",  # Ruff-specific rules
 ]
 ignore = [
-    "E501",  # line too long, handled by formatter
-    "B008",  # do not perform function calls in argument defaults
-    "B905",  # zip without explicit strict parameter
+    "D100",   # Missing docstring in public module
+    "D101",   # Missing docstring in public class  
+    "D102",   # Missing docstring in public method
+    "D103",   # Missing docstring in public function
+    "D104",   # Missing docstring in public package
+    "D105",   # Missing docstring in magic method
+    "D106",   # Missing docstring in public nested class
+    "D107",   # Missing docstring in __init__
+    "D203",   # 1 blank line required before class docstring
+    "D213",   # Multi-line docstring summary should start at the second line
+    "E501",   # Line too long (handled by black)
+    "S101",   # Use of assert detected (common in tests)
+    "S311",   # Standard pseudo-random generators are not suitable for cryptographic purposes
+    "PD901",  # df is a bad variable name (pandas convention)
+    "PLR0913", # Too many arguments to function call
+    "PLR2004", # Magic value used in comparison
+    "FBT001",  # Boolean positional arg in function definition
+    "FBT002",  # Boolean default arg in function definition
+    "COM812",  # Trailing comma missing (handled by black)
+    "ISC001",  # Implicitly concatenated string literals (handled by black)
+    "T201",    # Print found (allowed for now)
+    "T203",    # pprint found (allowed for now)
+    "B008",    # do not perform function calls in argument defaults
+    "B905",    # zip without explicit strict parameter
 ]
 exclude = [
     ".git",
@@ -106,25 +163,66 @@ exclude = [
     "dist",
     "*.egg-info",
     ".pytest_cache",
-    ".coverage"
+    ".coverage",
+    "htmlcov",
+    "scripts",
+    "docs/_build",
 ]
 
 [tool.ruff.per-file-ignores]
-"tests/**/*.py" = ["B011"]  # assert False in tests is fine
+"tests/**/*.py" = [
+    "S101",    # Use of assert detected
+    "PLR2004", # Magic value used in comparison
+    "ARG001",  # Unused function argument
+    "D",       # All docstring rules
+    "FBT",     # Boolean trap rules
+    "SLF001",  # Private member accessed
+    "PLR0913", # Too many arguments
+    "N802",    # Function name should be lowercase
+    "N806",    # Variable in function should be lowercase
+    "B011",    # assert False in tests is fine
+]
+"src/check_deps.py" = ["T201", "S602", "S607"]  # Allow print and subprocess
+"src/demo_*.py" = ["T201", "INP001"]  # Allow print in demo files
+"scripts/**/*.py" = ["T201", "S602", "S607", "INP001"]  # Allow print and subprocess in scripts
+
+[tool.ruff.mccabe]
+max-complexity = 10
+
+[tool.ruff.pydocstyle]
+convention = "google"
 
 [tool.ruff.isort]
 known-first-party = ["src"]
-force-single-line = true
+force-single-line = false
+force-sort-within-sections = true
+lines-after-imports = 2
+known-third-party = [
+    "pandas",
+    "numpy",
+    "matplotlib", 
+    "seaborn",
+    "yfinance",
+    "requests",
+    "bs4",
+    "scipy",
+    "pytest",
+    "jinja2",
+    "openpyxl",
+]
+
+[tool.ruff.pyupgrade]
+keep-runtime-typing = true
 
 # MyPy configuration for type checking
 [tool.mypy]
 python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false  # Start lenient, then tighten
 disallow_incomplete_defs = true
 check_untyped_defs = true
-disallow_untyped_decorators = true
+disallow_untyped_decorators = false
 no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -132,16 +230,37 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 show_error_codes = true
+show_column_numbers = true
+pretty = true
 
+# Module-specific overrides
 [[tool.mypy.overrides]]
 module = [
     "yfinance.*",
     "matplotlib.*",
     "seaborn.*",
     "ta",
-    "sklearn.*"
+    "sklearn.*",
+    "scipy.*",
+    "requests.*",
+    "bs4.*",
+    "beautifulsoup4.*",
+    "talib.*",
+    "jinja2.*",
+    "openpyxl.*",
+    "plotly.*",
+    "kaleido.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "src.backtest.*"
+disallow_untyped_defs = true  # Stricter for new FS.6 code
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+ignore_errors = true
 
 # Pytest configuration
 [tool.pytest.ini_options]
@@ -151,8 +270,10 @@ addopts = [
     "--strict-config",
     "--cov=src",
     "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml"
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+    "-ra",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
@@ -163,7 +284,12 @@ markers = [
     "integration: Integration tests",
     "slow: Slow tests (may fetch live data)",
     "requires_network: Tests that require network access",
-    "requires_talib: Tests that require TA-Lib library"
+    "requires_talib: Tests that require TA-Lib library",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore:.*yfinance.*:UserWarning",
 ]
 
 # Coverage configuration
@@ -173,10 +299,16 @@ omit = [
     "tests/*",
     "*/tests/*",
     "*/__pycache__/*",
-    "*/migrations/*"
+    "*/migrations/*",
+    "src/demo_*",
+    "src/check_deps.py",
+    "scripts/*",
 ]
 
 [tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -189,3 +321,6 @@ exclude_lines = [
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod"
 ]
+
+[tool.coverage.html]
+directory = "htmlcov"

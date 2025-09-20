@@ -254,3 +254,88 @@ def measure_test_time(request):
     # Log slow tests
     if duration > 5.0:  # Tests taking more than 5 seconds
         print(f"\n⚠️  Slow test detected: {request.node.name} took {duration:.2f}s")
+
+
+# Additional fixtures for FS.6 backtesting system
+@pytest.fixture
+def fs6_sample_data():
+    """Sample data for FS.6 backtesting system tests"""
+    rng = np.random.default_rng(42)
+    dates = pd.date_range(start='2023-01-01', periods=252, freq='D')
+    
+    data = []
+    price = 100.0
+    for i, date in enumerate(dates):
+        price *= (1 + rng.normal(0.001, 0.02))
+        high = price * (1 + rng.uniform(0.005, 0.02))
+        low = price * (1 - rng.uniform(0.005, 0.02))
+        open_price = low + (high - low) * rng.uniform(0.2, 0.8)
+        volume = int(rng.uniform(800000, 1500000))
+        
+        data.append({
+            'Date': date,
+            'Open': round(open_price, 2),
+            'High': round(high, 2),
+            'Low': round(low, 2),
+            'Close': round(price, 2),
+            'Volume': volume
+        })
+    
+    df = pd.DataFrame(data)
+    df.set_index('Date', inplace=True)
+    return df
+
+
+@pytest.fixture
+def mock_backtest_persistence():
+    """Mock persistence layer for backtesting tests"""
+    from unittest.mock import MagicMock
+    mock_persistence = MagicMock()
+    mock_persistence.save_backtest_results.return_value = True
+    mock_persistence.load_metadata.return_value = MagicMock()
+    mock_persistence.load_trades.return_value = []
+    mock_persistence.load_equity_curve.return_value = pd.DataFrame()
+    return mock_persistence
+
+
+@pytest.fixture
+def sample_trade_records():
+    """Sample trade records for testing"""
+    from datetime import datetime, timezone
+    
+    rng = np.random.default_rng(42)
+    trades = []
+    for i in range(10):
+        trade = {
+            'trade_id': f'T{i:06d}',
+            'symbol': 'TEST',
+            'side': 'BUY' if i % 2 == 0 else 'SELL',
+            'quantity': 100,
+            'entry_price': 100.0 + i,
+            'entry_time': datetime(2023, 1, 1 + i, tzinfo=timezone.utc),
+            'exit_price': 100.0 + i + rng.uniform(-5, 5),
+            'exit_time': datetime(2023, 1, 2 + i, tzinfo=timezone.utc),
+            'pnl': rng.uniform(-1000, 1500),
+            'pnl_percent': rng.uniform(-0.05, 0.075),
+            'commission': 25.0,
+            'slippage': 15.0
+        }
+        trades.append(trade)
+    
+    return trades
+
+
+@pytest.fixture
+def coverage_requirements():
+    """Define coverage requirements for different modules"""
+    return {
+        'minimum_total_coverage': 80,
+        'module_minimums': {
+            'src.advanced_indicators': 85,
+            'src.composite_scorer': 80,
+            'src.risk_manager': 90,
+            'src.backtest.execution_engine': 75,
+            'src.backtest.performance_metrics': 80,
+            'src.enhanced_early_warning_system': 70
+        }
+    }

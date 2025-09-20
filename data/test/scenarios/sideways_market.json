@@ -1,0 +1,14 @@
+{
+  "description": "Sideways market with range-bound movement",
+  "market_sentiment": "neutral",
+  "volatility": "medium",
+  "test_symbols": [
+    "LT",
+    "KOTAKBANK",
+    "HINDUNILVR"
+  ],
+  "expected_signals": "hold",
+  "duration_days": 30,
+  "trend_direction": "sideways",
+  "avg_daily_return": 0.002
+}

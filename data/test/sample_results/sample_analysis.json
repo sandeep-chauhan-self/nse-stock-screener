@@ -1,0 +1,45 @@
+{
+  "analysis_timestamp": "2025-09-21T01:57:51.764566",
+  "market_overview": {
+    "total_stocks_analyzed": 20,
+    "bullish_signals": 8,
+    "bearish_signals": 3,
+    "neutral_signals": 9,
+    "market_sentiment": "moderately_bullish"
+  },
+  "top_picks": [
+    {
+      "symbol": "RELIANCE",
+      "score": 85.5,
+      "signal": "BUY",
+      "confidence": 0.78,
+      "key_indicators": {
+        "rsi": 35.2,
+        "price_trend": "upward",
+        "volume_surge": true,
+        "support_level": 2450.0,
+        "resistance_level": 2650.0
+      }
+    },
+    {
+      "symbol": "TCS",
+      "score": 82.1,
+      "signal": "BUY",
+      "confidence": 0.73,
+      "key_indicators": {
+        "rsi": 42.8,
+        "price_trend": "upward",
+        "volume_surge": false,
+        "support_level": 3400.0,
+        "resistance_level": 3700.0
+      }
+    }
+  ],
+  "risk_warnings": [
+    {
+      "symbol": "ITC",
+      "warning": "Downward trend with high volume",
+      "risk_level": "high"
+    }
+  ]
+}

@@ -1,0 +1,512 @@
+# CI/CD Pipeline for NSE Stock Screener
+# Implements FS.7 Testing, CI/CD and Packaging requirements
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run full test suite'
+        required: false
+        default: 'true'
+        type: boolean
+      deploy_docs:
+        description: 'Deploy documentation'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.9'
+  NODE_VERSION: '18'
+  CACHE_VERSION: v1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Quality Checks & Linting
+  quality-checks:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        cache-dependency-path: '**/requirements*.txt'
+
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ env.CACHE_VERSION }}-${{ hashFiles('**/requirements*.txt', 'pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ env.CACHE_VERSION }}-
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -e .[dev,test,lint]
+
+    - name: Run Ruff linting
+      run: |
+        echo "::group::Ruff Linting"
+        ruff check src tests --output-format=github
+        echo "::endgroup::"
+
+    - name: Run Ruff formatting check
+      run: |
+        echo "::group::Ruff Format Check"
+        ruff format --check src tests
+        echo "::endgroup::"
+
+    - name: Run MyPy type checking
+      run: |
+        echo "::group::MyPy Type Checking"
+        mypy src --config-file=mypy.ini --junit-xml=mypy-results.xml
+        echo "::endgroup::"
+
+    - name: Run Bandit security scan
+      run: |
+        echo "::group::Security Scan"
+        bandit -c .bandit.yml -r src/ -f json -o bandit-results.json || true
+        bandit -c .bandit.yml -r src/ -f txt
+        echo "::endgroup::"
+
+    - name: Upload security scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-scan-results
+        path: bandit-results.json
+
+    - name: Upload type checking results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: type-check-results
+        path: mypy-results.xml
+
+  # Job 2: Unit Tests
+  unit-tests:
+    name: Unit Tests
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    needs: quality-checks
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11']
+        exclude:
+          # Reduce matrix size - only test all OS on Python 3.9
+          - os: windows-latest
+            python-version: '3.10'
+          - os: windows-latest
+            python-version: '3.11'
+          - os: macos-latest
+            python-version: '3.10'
+          - os: macos-latest
+            python-version: '3.11'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -e .[dev,test]
+
+    - name: Run unit tests
+      run: |
+        echo "::group::Unit Tests"
+        pytest tests/ \
+          --cov=src \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --cov-fail-under=80 \
+          --junit-xml=pytest-results.xml \
+          --verbose \
+          -m "not slow and not requires_network" \
+          --durations=10
+        echo "::endgroup::"
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.os }}-${{ matrix.python-version }}
+        path: |
+          pytest-results.xml
+          coverage.xml
+          htmlcov/
+
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+        verbose: true
+
+  # Job 3: Integration Tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: unit-tests
+    if: github.event_name != 'pull_request' || github.event.inputs.run_tests == 'true'
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -e .[dev,test,advanced]
+
+    - name: Create test data directory
+      run: |
+        mkdir -p data/test
+        mkdir -p output/test
+
+    - name: Run integration tests
+      env:
+        REDIS_URL: redis://localhost:6379
+        TEST_MODE: true
+        CACHE_ENABLED: true
+      run: |
+        echo "::group::Integration Tests"
+        pytest tests/ \
+          --cov=src \
+          --cov-append \
+          --cov-report=xml \
+          --junit-xml=integration-results.xml \
+          --verbose \
+          -m "integration" \
+          --durations=10
+        echo "::endgroup::"
+
+    - name: Run slow tests (network dependent)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      env:
+        TEST_MODE: true
+        ALLOW_NETWORK: true
+      run: |
+        echo "::group::Slow/Network Tests"
+        pytest tests/ \
+          --junit-xml=slow-test-results.xml \
+          --verbose \
+          -m "slow or requires_network" \
+          --durations=10 \
+          --maxfail=3
+        echo "::endgroup::"
+
+    - name: Upload integration test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: |
+          integration-results.xml
+          slow-test-results.xml
+          coverage.xml
+
+  # Job 4: Build & Package
+  build-package:
+    name: Build Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [quality-checks, unit-tests]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel build twine
+
+    - name: Build package
+      run: |
+        echo "::group::Building Package"
+        python -m build
+        echo "::endgroup::"
+
+    - name: Check package
+      run: |
+        echo "::group::Package Check"
+        twine check dist/*
+        echo "::endgroup::"
+
+    - name: Upload package artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: python-package
+        path: dist/
+
+  # Job 5: Docker Build
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [quality-checks, unit-tests]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: nse-stock-screener
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Job 6: Documentation
+  documentation:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: quality-checks
+    if: github.event.inputs.deploy_docs == 'true' || github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[docs]
+
+    - name: Build documentation
+      run: |
+        echo "::group::Building Documentation"
+        cd docs
+        make html
+        echo "::endgroup::"
+
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/_build/html/
+
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: docs/_build/html
+
+  # Job 7: Performance Tests
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [unit-tests]
+    if: github.event_name == 'push' && contains(github.ref, 'main')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[dev,test]
+        pip install memory-profiler pytest-benchmark
+
+    - name: Run performance tests
+      run: |
+        echo "::group::Performance Tests"
+        pytest tests/ \
+          -m "performance" \
+          --benchmark-only \
+          --benchmark-json=benchmark-results.json \
+          --verbose
+        echo "::endgroup::"
+
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results
+        path: benchmark-results.json
+
+  # Job 8: Security Scan
+  security-scan:
+    name: Advanced Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: quality-checks
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Run Safety check
+      run: |
+        pip install safety
+        safety check --json --output safety-results.json || true
+        safety check
+
+    - name: Upload Safety results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: safety-results
+        path: safety-results.json
+
+  # Job 9: Release
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-package, docker-build, integration-tests]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download package artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: python-package
+        path: dist/
+
+    - name: Create GitHub Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "dist/*"
+        token: ${{ secrets.GITHUB_TOKEN }}
+        generateReleaseNotes: true
+
+    - name: Publish to PyPI
+      if: startsWith(github.ref, 'refs/tags/v')
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        pip install twine
+        twine upload dist/*
+
+  # Job 10: Notification
+  notification:
+    name: Notification
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [quality-checks, unit-tests, integration-tests, build-package, docker-build]
+    
+    steps:
+    - name: Notify on success
+      if: ${{ needs.unit-tests.result == 'success' && needs.integration-tests.result == 'success' }}
+      run: |
+        echo "✅ All tests passed successfully!"
+        echo "Build Status: SUCCESS"
+
+    - name: Notify on failure
+      if: ${{ needs.unit-tests.result == 'failure' || needs.integration-tests.result == 'failure' }}
+      run: |
+        echo "❌ Tests failed!"
+        echo "Build Status: FAILURE"
+        exit 1

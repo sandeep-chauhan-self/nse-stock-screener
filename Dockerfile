@@ -32,15 +32,13 @@ RUN pip install --upgrade pip setuptools wheel && \
 # Stage 2: Production runtime
 FROM python:3.11-slim AS runtime
 
-# Install runtime system dependencies
+# Install runtime system dependencies and create non-root user for security
 RUN apt-get update && apt-get install -y \
     curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash screener && \
-    mkdir -p /app && \
-    chown -R screener:screener /app
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash screener \
+    && mkdir -p /app \
+    && chown -R screener:screener /app
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv

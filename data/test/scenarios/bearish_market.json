@@ -1,0 +1,14 @@
+{
+  "description": "Bearish market conditions with downward trends",
+  "market_sentiment": "bearish",
+  "volatility": "high",
+  "test_symbols": [
+    "ITC",
+    "BHARTIARTL",
+    "SBIN"
+  ],
+  "expected_signals": "sell",
+  "duration_days": 30,
+  "trend_direction": "down",
+  "avg_daily_return": -0.012
+}

@@ -1,0 +1,20 @@
+{
+  "risk_tolerance": "medium",
+  "max_position_size": 0.02,
+  "stop_loss_percent": 0.03,
+  "take_profit_percent": 0.08,
+  "technical_indicators": {
+    "rsi_period": 7,
+    "rsi_oversold": 35,
+    "rsi_overbought": 65,
+    "sma_short": 5,
+    "sma_long": 15,
+    "volume_threshold": 1.2
+  },
+  "filters": {
+    "min_price": 50,
+    "max_price": 5000,
+    "min_volume": 200000,
+    "min_market_cap": 5000000000
+  }
+}

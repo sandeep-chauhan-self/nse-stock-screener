@@ -1,0 +1,302 @@
+# Pull Request Validation Workflow
+# Fast feedback for pull requests with essential checks
+
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+env:
+  PYTHON_VERSION: '3.9'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Quick Quality Checks
+  quick-checks:
+    name: Quick Quality Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff mypy bandit
+
+    - name: Run Ruff (fast linting)
+      run: |
+        echo "::group::Ruff Check"
+        ruff check src tests --diff --output-format=github
+        echo "::endgroup::"
+
+    - name: Check Ruff formatting
+      run: |
+        echo "::group::Ruff Format"
+        ruff format --check --diff src tests
+        echo "::endgroup::"
+
+    - name: Quick type check (modified files only)
+      run: |
+        echo "::group::Quick MyPy Check"
+        # Get list of changed Python files
+        CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' | grep -E '^src/' | head -10)
+        if [ ! -z "$CHANGED_FILES" ]; then
+          echo "Checking files: $CHANGED_FILES"
+          mypy $CHANGED_FILES --config-file=mypy.ini || true
+        else
+          echo "No Python files changed in src/"
+        fi
+        echo "::endgroup::"
+
+    - name: Security check (modified files only)
+      run: |
+        echo "::group::Security Check"
+        CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' | grep -E '^src/')
+        if [ ! -z "$CHANGED_FILES" ]; then
+          bandit $CHANGED_FILES -f txt || true
+        fi
+        echo "::endgroup::"
+
+  # Job 2: Essential Tests
+  essential-tests:
+    name: Essential Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: quick-checks
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -e .[dev,test]
+
+    - name: Run unit tests (fast subset)
+      run: |
+        echo "::group::Fast Unit Tests"
+        pytest tests/ \
+          --cov=src \
+          --cov-report=term-missing \
+          --cov-fail-under=70 \
+          --junit-xml=pytest-results.xml \
+          -m "not slow and not requires_network and not integration" \
+          -x \
+          --tb=short
+        echo "::endgroup::"
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: pr-test-results
+        path: pytest-results.xml
+
+  # Job 3: Code Quality Summary
+  code-quality-summary:
+    name: Code Quality Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [quick-checks, essential-tests]
+    if: always()
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+
+    - name: Generate quality report
+      run: |
+        echo "## 📊 Code Quality Summary" >> quality_report.md
+        echo "" >> quality_report.md
+        
+        # Check if linting passed
+        if [ "${{ needs.quick-checks.result }}" == "success" ]; then
+          echo "✅ **Linting**: All checks passed" >> quality_report.md
+        else
+          echo "❌ **Linting**: Issues found" >> quality_report.md
+        fi
+        
+        # Check if tests passed
+        if [ "${{ needs.essential-tests.result }}" == "success" ]; then
+          echo "✅ **Tests**: All essential tests passed" >> quality_report.md
+        else
+          echo "❌ **Tests**: Some tests failed" >> quality_report.md
+        fi
+        
+        echo "" >> quality_report.md
+        echo "### 📈 Change Summary" >> quality_report.md
+        echo "- **Files changed**: $(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)" >> quality_report.md
+        echo "- **Python files**: $(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' | wc -l)" >> quality_report.md
+        echo "- **Test files**: $(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'tests/*.py' | wc -l)" >> quality_report.md
+        
+        echo "" >> quality_report.md
+        echo "### 🔍 What's Next?" >> quality_report.md
+        if [ "${{ needs.quick-checks.result }}" != "success" ] || [ "${{ needs.essential-tests.result }}" != "success" ]; then
+          echo "- Fix the issues highlighted above" >> quality_report.md
+          echo "- Run \`ruff check src tests --fix\` to auto-fix linting issues" >> quality_report.md
+          echo "- Run \`pytest tests/\` locally to verify tests pass" >> quality_report.md
+        else
+          echo "- All quality checks passed! ✨" >> quality_report.md
+          echo "- Ready for review when approved" >> quality_report.md
+        fi
+
+    - name: Comment PR with quality report
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: code-quality
+        path: quality_report.md
+
+  # Job 4: Auto-Fix Suggestions
+  auto-fix-suggestions:
+    name: Auto-Fix Suggestions
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: quick-checks
+    if: needs.quick-checks.result == 'failure'
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        pip install ruff
+
+    - name: Generate auto-fixes
+      run: |
+        echo "## 🔧 Auto-Fix Suggestions" > autofix_suggestions.md
+        echo "" >> autofix_suggestions.md
+        echo "The following changes can be automatically applied:" >> autofix_suggestions.md
+        echo "" >> autofix_suggestions.md
+        echo "\`\`\`bash" >> autofix_suggestions.md
+        echo "# Run these commands to fix most issues:" >> autofix_suggestions.md
+        echo "ruff check src tests --fix" >> autofix_suggestions.md
+        echo "ruff format src tests" >> autofix_suggestions.md
+        echo "\`\`\`" >> autofix_suggestions.md
+        echo "" >> autofix_suggestions.md
+        echo "Or run them individually:" >> autofix_suggestions.md
+        echo "" >> autofix_suggestions.md
+        
+        # Show what ruff would fix
+        echo "\`\`\`diff" >> autofix_suggestions.md
+        ruff check src tests --fix --diff >> autofix_suggestions.md || true
+        echo "\`\`\`" >> autofix_suggestions.md
+
+    - name: Comment with auto-fix suggestions
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: auto-fix
+        path: autofix_suggestions.md
+
+  # Job 5: Test Coverage Report
+  coverage-report:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    needs: essential-tests
+    if: needs.essential-tests.result == 'success'
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        pip install -e .[dev,test]
+
+    - name: Run coverage analysis
+      run: |
+        pytest tests/ \
+          --cov=src \
+          --cov-report=json \
+          --cov-report=html \
+          -m "not slow and not requires_network" \
+          -q
+
+    - name: Generate coverage report
+      run: |
+        python -c "
+import json
+with open('coverage.json') as f:
+    data = json.load(f)
+
+coverage_pct = data['totals']['percent_covered']
+missing_lines = data['totals']['missing_lines']
+total_lines = data['totals']['num_statements']
+
+print(f'## 📊 Test Coverage Report')
+print(f'')
+print(f'**Overall Coverage**: {coverage_pct:.1f}%')
+print(f'**Lines Covered**: {total_lines - missing_lines}/{total_lines}')
+print(f'')
+
+if coverage_pct >= 80:
+    print('✅ **Status**: Coverage meets minimum threshold (80%)')
+elif coverage_pct >= 70:
+    print('⚠️ **Status**: Coverage is below target but acceptable for PR (70%)')
+else:
+    print('❌ **Status**: Coverage is too low - please add tests')
+
+print(f'')
+print('### File Coverage Details')
+print('| File | Coverage | Missing Lines |')
+print('|------|----------|---------------|')
+
+for file, info in data['files'].items():
+    if file.startswith('src/'):
+        file_pct = info['summary']['percent_covered']
+        missing = info['summary']['missing_lines']
+        status = '✅' if file_pct >= 80 else '⚠️' if file_pct >= 60 else '❌'
+        print(f'| {status} {file} | {file_pct:.1f}% | {missing} |')
+        " > coverage_report.md
+
+    - name: Comment with coverage report
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: coverage
+        path: coverage_report.md

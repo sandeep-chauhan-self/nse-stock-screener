@@ -1,0 +1,14 @@
+{
+  "description": "High volatility market conditions",
+  "market_sentiment": "uncertain",
+  "volatility": "very_high",
+  "test_symbols": [
+    "AXISBANK",
+    "ASIANPAINT",
+    "MARUTI"
+  ],
+  "expected_signals": "mixed",
+  "duration_days": 15,
+  "trend_direction": "volatile",
+  "avg_daily_return": 0.005
+}

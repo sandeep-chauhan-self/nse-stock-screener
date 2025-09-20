@@ -1,0 +1,124 @@
+# .dockerignore for NSE Stock Screener
+# Exclude files and directories that shouldn't be in the Docker image
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python cache and artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+test-output/
+
+# Static analysis and linting
+.mypy_cache/
+.ruff_cache/
+.pylint.d/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Documentation build
+docs/_build/
+docs/build/
+site/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Project specific output directories (will be mounted as volumes)
+output/
+logs/
+data/temp/
+
+# Large data files (should be mounted or downloaded at runtime)
+*.csv
+*.xlsx
+*.json
+data/*.txt
+
+# CI/CD and deployment
+.github/
+.travis.yml
+.circleci/
+.gitlab-ci.yml
+Jenkinsfile
+
+# Development scripts and configs
+scripts/
+.pre-commit-config.yaml
+setup.py
+MANIFEST.in
+
+# Node.js (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Security
+.env.local
+.env.production
+*.pem
+*.key

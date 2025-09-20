@@ -1,0 +1,71 @@
+# Additional Ruff configuration for the NSE Stock Screener project
+# This supplements the main pyproject.toml configuration
+
+[lint]
+# Additional custom rules for financial/trading domain
+extend-select = [
+    "FA",   # flake8-future-annotations
+    "SLOT", # flake8-slots
+]
+
+# Financial domain specific patterns to ignore
+extend-ignore = [
+    "FIX002",  # Line contains TODO, FIXME, XXX
+    "ERA001",  # Found commented-out code
+    "TD001",   # Invalid TODO tag format
+    "TD002",   # Missing author in TODO
+    "TD003",   # Missing issue link on TODO
+]
+
+# Custom per-file ignores for financial domain
+[lint.per-file-ignores]
+"src/advanced_indicators.py" = [
+    "PLR0912", # Too many branches (common in indicator calculations)
+    "PLR0915", # Too many statements (common in complex calculations)
+    "C901",    # Complex function (indicator math is inherently complex)
+]
+"src/composite_scorer.py" = [
+    "PLR0912", # Too many branches (scoring systems need many conditions)
+    "PLR0915", # Too many statements
+    "C901",    # Complex function
+]
+"src/risk_manager.py" = [
+    "PLR0912", # Too many branches (risk management requires many conditions)
+    "S110",    # Try-except-pass (legitimate for fallback strategies)
+]
+"src/advanced_backtester.py" = [
+    "PLR0912", # Too many branches
+    "PLR0915", # Too many statements
+    "C901",    # Complex function (backtesting logic is complex)
+]
+"src/early_warning_system.py" = [
+    "T201",    # Print statements (for user feedback)
+    "T203",    # Pprint statements  
+]
+"src/enhanced_early_warning_system.py" = [
+    "T201",    # Print statements (for user feedback)
+    "T203",    # Pprint statements
+    "PLR0912", # Too many branches (warning systems need many conditions)
+]
+
+# Standard financial abbreviations that are acceptable
+[lint.pep8-naming]
+ignore-names = [
+    "df",      # DataFrame (pandas convention)
+    "pct",     # Percentage
+    "vol",     # Volume
+    "ohlc",    # Open, High, Low, Close
+    "sma",     # Simple Moving Average
+    "ema",     # Exponential Moving Average
+    "rsi",     # Relative Strength Index
+    "macd",    # Moving Average Convergence Divergence
+    "bb",      # Bollinger Bands
+    "atr",     # Average True Range
+    "adx",     # Average Directional Index
+    "stoch",   # Stochastic
+    "roc",     # Rate of Change
+    "mfi",     # Money Flow Index
+    "cci",     # Commodity Channel Index
+    "obv",     # On-Balance Volume
+    "vwap",    # Volume Weighted Average Price
+]

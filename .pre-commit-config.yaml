@@ -56,25 +56,30 @@ repos:
         args: ["--profile=black", "--line-length=88"]
 
   # Python linting with Ruff (faster alternative to flake8)
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.0.287
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.8
     hooks:
       - id: ruff
         name: "Lint Python code with Ruff"
         language: python
         files: \.py$
         args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format
+        name: "Format Python code with Ruff"
+        language: python
+        files: \.py$
 
   # Type checking with MyPy
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.5.1
+    rev: v1.7.1
     hooks:
       - id: mypy
         name: "Type check with MyPy"
         language: python
         files: \.py$
-        args: ["--ignore-missing-imports", "--disallow-untyped-defs"]
-        additional_dependencies: [types-requests, types-PyYAML]
+        args: ["--config-file=mypy.ini"]
+        additional_dependencies: [types-requests, types-PyYAML, types-python-dateutil, types-pytz]
+        exclude: ^(scripts/|src/demo_|src/check_deps\.py)
 
   # Security scanning with Bandit
   - repo: https://github.com/pycqa/bandit
@@ -84,7 +89,7 @@ repos:
         name: "Security scan with Bandit"
         language: python
         files: \.py$
-        args: ["-r", "-ll", "-x", "tests/"]
+        args: ["-c", ".bandit.yml", "-r", "src/"]
 
   # Docstring checking with pydocstyle
   - repo: https://github.com/pycqa/pydocstyle

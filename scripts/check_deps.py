@@ -134,6 +134,43 @@ class DependencyChecker:
             
         return requirements
         
+    def _check_version_compatibility(self, installed_version: str, operator: str, required_version: str) -> bool:
+        """Check if installed version meets requirements"""
+        if not operator or not required_version:
+            return True
+            
+        from packaging import version as pkg_version
+        
+        if operator == '>=':
+            return pkg_version.parse(installed_version) >= pkg_version.parse(required_version)
+        elif operator == '==':
+            return installed_version == required_version
+        elif operator == '>':
+            return pkg_version.parse(installed_version) > pkg_version.parse(required_version)
+            
+        return True
+        
+    def _validate_core_package(self, package: str, operator: str, version: str, installed: Dict[str, str]) -> bool:
+        """Validate a single core package installation and version"""
+        package_lower = package.lower()
+        
+        if package_lower not in installed:
+            self.print_status(f"{package} - Not installed", "fail", 1)
+            self.results['core']['failed'].append(f"{package} missing")
+            return False
+            
+        installed_version = installed[package_lower]
+        version_ok = self._check_version_compatibility(installed_version, operator, version)
+        
+        if version_ok:
+            self.print_status(f"{package} {installed_version} ✓", "pass", 1)
+            self.results['core']['passed'].append(f"{package} {installed_version}")
+            return True
+        else:
+            self.print_status(f"{package} {installed_version} (required: {operator}{version})", "fail", 1)
+            self.results['core']['failed'].append(f"{package} version mismatch")
+            return False
+
     def check_core_dependencies(self) -> bool:
         """Check core application dependencies"""
         self.print_header("Core Dependencies Check")
@@ -153,31 +190,9 @@ class DependencyChecker:
         }
         
         for package, operator, version in requirements:
-            package_lower = package.lower()
-            
-            if package_lower in core_packages:
-                if package_lower in installed:
-                    installed_version = installed[package_lower]
-                    
-                    # Check version compatibility
-                    version_ok = True
-                    if operator == '>=' and version:
-                        from packaging import version as pkg_version
-                        version_ok = pkg_version.parse(installed_version) >= pkg_version.parse(version)
-                    elif operator == '==' and version:
-                        version_ok = installed_version == version
-                        
-                    if version_ok:
-                        self.print_status(f"{package} {installed_version} ✓", "pass", 1)
-                        self.results['core']['passed'].append(f"{package} {installed_version}")
-                    else:
-                        self.print_status(f"{package} {installed_version} (required: {operator}{version})", "fail", 1)
-                        self.results['core']['failed'].append(f"{package} version mismatch")
-                        all_passed = False
-                else:
-                    self.print_status(f"{package} - Not installed", "fail", 1)
-                    self.results['core']['failed'].append(f"{package} missing")
-                    all_passed = False
+            if package.lower() in core_packages:
+                package_passed = self._validate_core_package(package, operator, version, installed)
+                all_passed = all_passed and package_passed
                     
         return all_passed
         

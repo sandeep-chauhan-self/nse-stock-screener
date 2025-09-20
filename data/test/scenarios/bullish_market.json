@@ -1,0 +1,15 @@
+{
+  "description": "Bullish market conditions with upward trends",
+  "market_sentiment": "bullish",
+  "volatility": "low",
+  "test_symbols": [
+    "RELIANCE",
+    "TCS",
+    "INFY",
+    "HDFCBANK"
+  ],
+  "expected_signals": "buy",
+  "duration_days": 30,
+  "trend_direction": "up",
+  "avg_daily_return": 0.015
+}
