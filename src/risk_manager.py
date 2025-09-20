@@ -4,12 +4,16 @@ Implements comprehensive risk management including position sizing, stop losses,
 take profits, exposure limits, and trailing stops
 """
 
+import logging
 from datetime import datetime, timedelta
 
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 import pandas as pd
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Import centralized configuration
 try:
@@ -341,10 +345,10 @@ class RiskManager:
         # Add to positions
         self.positions[symbol] = position
         
-        print(f"Entered position: {symbol}")
-        print(f"  Entry: ${entry_price:.2f}, Quantity: {quantity}")
-        print(f"  Stop Loss: ${stop_loss:.2f}, Take Profit: ${take_profit:.2f}")
-        print(f"  Risk Amount: ${risk_amount:.2f}")
+        logger.info(f"Entered position: {symbol}", 
+                   extra={'symbol': symbol, 'entry_price': entry_price, 'quantity': quantity,
+                         'stop_loss': stop_loss, 'take_profit': take_profit, 'risk_amount': risk_amount,
+                         'operation': 'position_entry'})
         
         return position
     
@@ -370,7 +374,9 @@ class RiskManager:
                 # Move stop to breakeven
                 position.current_stop_loss = position.entry_price * 1.001  # Slightly above entry
                 position.stop_type = StopType.BREAKEVEN
-                print(f"{symbol}: Moved stop to breakeven at ${position.current_stop_loss:.2f}")
+                logger.info(f"{symbol}: Moved stop to breakeven at ${position.current_stop_loss:.2f}", 
+                           extra={'symbol': symbol, 'new_stop': position.current_stop_loss, 
+                                 'stop_type': 'breakeven'})
         
         # Check if we should start trailing
         elif position.stop_type == StopType.BREAKEVEN:
@@ -384,7 +390,9 @@ class RiskManager:
                 trailing_distance = self.config.trailing_stop_atr_multiplier * position.atr_at_entry
                 position.current_stop_loss = current_price - trailing_distance
                 position.stop_type = StopType.TRAILING
-                print(f"{symbol}: Started trailing stop at ${position.current_stop_loss:.2f}")
+                logger.info(f"{symbol}: Started trailing stop at ${position.current_stop_loss:.2f}", 
+                           extra={'symbol': symbol, 'new_stop': position.current_stop_loss, 
+                                 'stop_type': 'trailing_start'})
         
         # Update trailing stop
         elif position.stop_type == StopType.TRAILING:
@@ -394,7 +402,9 @@ class RiskManager:
             # Only move stop up, never down
             if new_stop > position.current_stop_loss:
                 position.current_stop_loss = new_stop
-                print(f"{symbol}: Trailed stop to ${position.current_stop_loss:.2f}")
+                logger.info(f"{symbol}: Trailed stop to ${position.current_stop_loss:.2f}", 
+                           extra={'symbol': symbol, 'new_stop': position.current_stop_loss, 
+                                 'stop_type': 'trailing_update'})
         
         # Check if stop should be triggered
         return current_price <= position.current_stop_loss
@@ -453,9 +463,10 @@ class RiskManager:
         self.closed_positions.append(position)
         del self.positions[symbol]
         
-        print(f"Exited position: {symbol}")
-        print(f"  Exit: ${exit_price:.2f}, Reason: {exit_reason}")
-        print(f"  P&L: ${net_pnl:.2f}")
+        logger.info(f"Exited position: {symbol}", 
+                   extra={'symbol': symbol, 'exit_price': exit_price, 'exit_reason': exit_reason,
+                         'net_pnl': net_pnl, 'gross_pnl': gross_pnl, 'transaction_cost': transaction_cost,
+                         'operation': 'position_exit'})
         
         return net_pnl
     
@@ -556,8 +567,9 @@ if __name__ == "__main__":
     )
     
     if can_enter:
-        print(f"Can enter position: {reason}")
-        print(f"Suggested quantity: {quantity}, Risk amount: ${risk_amount:.2f}")
+        logger.info(f"Can enter position: {reason}", 
+                   extra={'symbol': symbol, 'can_enter': True, 'reason': reason, 
+                         'quantity': quantity, 'risk_amount': risk_amount})
         
         # Enter position
         position = risk_manager.enter_position(
@@ -568,13 +580,15 @@ if __name__ == "__main__":
         test_prices = [2520, 2550, 2580, 2600, 2620, 2590, 2570]
         
         for i, price in enumerate(test_prices):
-            print(f"\nDay {i+1}: Price = ${price}")
+            logger.info(f"Day {i+1}: Price = ${price}", 
+                       extra={'day': i + 1, 'price': price, 'symbol': symbol})
             should_exit, exit_reason = risk_manager.check_exit_conditions(
                 symbol, price, entry_date + timedelta(days=i+1)
             )
             
             if should_exit:
-                print(f"Exit signal: {exit_reason}")
+                logger.info(f"Exit signal: {exit_reason}", 
+                           extra={'exit_reason': exit_reason, 'symbol': symbol})
                 pnl = risk_manager.exit_position(
                     symbol, price, entry_date + timedelta(days=i+1), exit_reason
                 )
@@ -582,9 +596,8 @@ if __name__ == "__main__":
         
         # Portfolio summary
         summary = risk_manager.get_portfolio_summary()
-        print(f"\nPortfolio Summary:")
-        for key, value in summary.items():
-            print(f"{key}: {value}")
+        logger.info("Portfolio Summary", extra={'portfolio_summary': summary})
     
     else:
-        print(f"Cannot enter position: {reason}")
+        logger.warning(f"Cannot enter position: {reason}", 
+                      extra={'symbol': symbol, 'can_enter': False, 'reason': reason})

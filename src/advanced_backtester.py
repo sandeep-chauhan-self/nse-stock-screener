@@ -23,6 +23,9 @@ except ImportError:
 
 warnings.filterwarnings('ignore')
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 @dataclass
 class TradeResult:
     """Individual trade result"""
@@ -407,7 +410,9 @@ class AdvancedBacktester:
         Perform walk-forward backtesting
         signals_data: {symbol: [{'date': datetime, 'signal_data': dict}, ...]}
         """
-        print("Starting walk-forward backtesting...")
+        logger.info("Starting walk-forward backtesting", 
+                   extra={'operation': 'backtest_start', 'start_date': start_date.isoformat(), 
+                         'end_date': end_date.isoformat()})
         
         # Initialize
         current_date = start_date
@@ -418,7 +423,8 @@ class AdvancedBacktester:
         
         # Walk forward through time
         while current_date <= end_date:
-            print(f"Processing date: {current_date.strftime('%Y-%m-%d')}, Portfolio: ${portfolio_value:,.0f}")
+            logger.debug(f"Processing date: {current_date.strftime('%Y-%m-%d')}, Portfolio: ${portfolio_value:,.0f}", 
+                        extra={'current_date': current_date.isoformat(), 'portfolio_value': portfolio_value})
             
             # Check exit conditions for active positions
             positions_to_close = []
@@ -521,7 +527,9 @@ class AdvancedBacktester:
                             
                             if trade_result:
                                 active_positions[symbol] = trade_result
-                                print(f"Entered position: {symbol} at ${trade_result.entry_price:.2f}")
+                                logger.info(f"Entered position: {symbol} at ${trade_result.entry_price:.2f}", 
+                                           extra={'symbol': symbol, 'entry_price': trade_result.entry_price, 
+                                                 'operation': 'position_entry'})
                                 break  # Only one signal per symbol per day
             
             # Update portfolio history
@@ -585,7 +593,8 @@ class AdvancedBacktester:
         self.trades = all_trades
         self.portfolio_value_history = portfolio_history
         
-        print(f"Backtesting completed. Total trades: {len(all_trades)}")
+        logger.info(f"Backtesting completed. Total trades: {len(all_trades)}", 
+                   extra={'total_trades': len(all_trades), 'operation': 'backtest_complete'})
         
         return self.calculate_performance_metrics()
     
@@ -796,7 +805,8 @@ SIGNAL SCORE ANALYSIS
             filename = f'backtest_report_{timestamp}.txt'
             with open(filename, 'w') as f:
                 f.write(report)
-            print(f"Report saved to {filename}")
+            logger.info(f"Report saved to {filename}", 
+                       extra={'report_file': filename, 'operation': 'report_saved'})
         
         return report
 
@@ -831,9 +841,11 @@ if __name__ == "__main__":
     start_date = datetime(2024, 1, 1)
     end_date = datetime(2024, 6, 30)
     
-    print("Running sample backtest...")
+    logger.info("Running sample backtest", 
+               extra={'operation': 'demo_backtest', 'start_date': start_date.isoformat(), 
+                     'end_date': end_date.isoformat()})
     metrics = backtester.walk_forward_backtest(sample_signals, start_date, end_date)
     
     # Generate report
     report = backtester.generate_backtest_report(metrics)
-    print(report)
+    logger.info("Backtest report generated", extra={'report_content': report})

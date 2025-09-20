@@ -38,6 +38,20 @@ except ImportError:
     def fetch_stock_data(symbol, **kwargs):
         import yfinance as yf
         return yf.Ticker(symbol).history(**kwargs)
+    
+    # Mock data validation imports
+    class DataContract:
+        IndicatorDict = dict
+    class DataValidator:
+        pass
+    def safe_float(x, default, name): 
+        return x if not math.isnan(x) else default
+    def safe_bool(x, default, name): 
+        return x if x is not None else default
+    def is_valid_numeric(x): 
+        return not math.isnan(x) if isinstance(x, (int, float)) else False
+    def replace_invalid_with_nan(x): 
+        return x
 
 # Use yfinance for data fetching
 try:

@@ -14,6 +14,9 @@ from .common.volume_thresholds import VolumeThresholdCalculator, DEFAULT_VOLUME_
 # Data validation imports
 from .data.validation import DataContract, DataValidator, safe_float, safe_bool, is_valid_numeric
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 class CompositeScorer:
     """
     Implements the composite scoring system with:
@@ -608,12 +611,10 @@ if __name__ == "__main__":
     result = scorer.compute_composite_score(sample_indicators, MarketRegime.SIDEWAYS)
     
     if result:
-        print(f"\nComposite Score for {result['symbol']}:")
-        print(f"Total Score: {result['composite_score']}/100")
-        print(f"Probability Level: {result['probability_level']}")
-        print(f"Market Regime: {result['market_regime']}")
-        print("\nComponent Scores:")
-        for component, score in result['component_scores'].items():
-            print(f"  {component}: {score}")
+        logger.info(f"Composite Score for {result['symbol']}: {result['composite_score']}/100", 
+                   extra={'symbol': result['symbol'], 'composite_score': result['composite_score'],
+                         'probability_level': result['probability_level'], 'market_regime': result['market_regime']})
+        logger.info("Component scores breakdown", 
+                   extra={'component_scores': result['component_scores']})
     else:
-        print("Failed to compute composite score")
+        logger.error("Failed to compute composite score")

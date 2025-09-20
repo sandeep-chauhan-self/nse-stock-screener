@@ -44,8 +44,8 @@ except ImportError:
 from .data.compat import enhanced_yfinance as yf
 
 # Add the current directory to Python path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+current_dir = Path(__file__).parent
+sys.path.append(str(current_dir))
 
 # Import path utilities for cross-platform compatibility
 from .common.paths import PathManager, get_data_path, get_output_path, ensure_dir
@@ -126,18 +126,18 @@ class EnhancedEarlyWarningSystem:
     
     def _setup_output_directories(self) -> Dict[str, str]:
         """Setup output directories for reports and charts"""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        parent_dir = os.path.dirname(base_dir)
+        base_dir = Path(__file__).parent
+        parent_dir = base_dir.parent
         
         output_dirs = {
-            'reports': os.path.join(parent_dir, 'output', 'reports'),
-            'charts': os.path.join(parent_dir, 'output', 'charts'),
-            'backtests': os.path.join(parent_dir, 'output', 'backtests')
+            'reports': str(parent_dir / 'output' / 'reports'),
+            'charts': str(parent_dir / 'output' / 'charts'),
+            'backtests': str(parent_dir / 'output' / 'backtests')
         }
         
         # Create directories if they don't exist
         for dir_path in output_dirs.values():
-            os.makedirs(dir_path, exist_ok=True)
+            Path(dir_path).mkdir(parents=True, exist_ok=True)
         
         return output_dirs
     
@@ -145,13 +145,15 @@ class EnhancedEarlyWarningSystem:
                            input_file: Optional[str]) -> List[str]:
         """Load stock symbols from various sources"""
         if custom_stocks:
-            print(f"Using custom stock list: {len(custom_stocks)} stocks")
+            logger.info(f"Using custom stock list: {len(custom_stocks)} stocks", 
+                       extra={'source': 'custom', 'count': len(custom_stocks)})
             # Ensure all custom stocks have .NS suffix
             stocks = [s if s.endswith('.NS') else f"{s}.NS" for s in custom_stocks]
             return stocks
         
-        if input_file and os.path.exists(input_file):
-            print(f"Loading stocks from file: {input_file}")
+        if input_file and Path(input_file).exists():
+            logger.info(f"Loading stocks from file: {input_file}", 
+                       extra={'source': 'file', 'file_path': input_file})
             with open(input_file, 'r') as f:
                 stocks = [line.strip() for line in f if line.strip()]
             # Ensure all stocks from file have .NS suffix
@@ -159,12 +161,13 @@ class EnhancedEarlyWarningSystem:
             return stocks
         
         # Default: load from NSE symbols file
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        parent_dir = os.path.dirname(base_dir)
-        default_file = os.path.join(parent_dir, 'data', 'nse_only_symbols.txt')
+        base_dir = Path(__file__).parent
+        parent_dir = base_dir.parent
+        default_file = parent_dir / 'data' / 'nse_only_symbols.txt'
         
-        if os.path.exists(default_file):
-            print(f"Loading stocks from default file: {default_file}")
+        if default_file.exists():
+            logger.info(f"Loading stocks from default file: {default_file}", 
+                       extra={'source': 'default_file', 'file_path': str(default_file)})
             with open(default_file, 'r') as f:
                 stocks = [line.strip() for line in f if line.strip()]
             # Ensure all stocks from default file have .NS suffix
@@ -172,22 +175,22 @@ class EnhancedEarlyWarningSystem:
             return stocks[:35]  # Limit to first 35 for testing
         
         # Fallback: sample stocks
-        print("Using fallback sample stocks")
+        logger.warning("Using fallback sample stocks", extra={'source': 'fallback'})
         return ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS']
     
     def detect_market_regime(self) -> MarketRegime:
         """Detect current market regime using NIFTY data"""
         try:
-            logger.info("Detecting market regime using NIFTY data")
-            print("🌍 Detecting market regime...")
+            logger.info("🌍 Detecting market regime using NIFTY data", 
+                       extra={'operation': 'market_regime_detection'})
             
             # Fetch NIFTY data using enhanced fetcher
             nifty = yf.Ticker("^NSEI")
             data = nifty.history(period="3mo", auto_adjust=True)
             
             if data.empty:
-                logger.warning("Could not fetch NIFTY data, using SIDEWAYS regime")
-                print("⚠️ Could not fetch NIFTY data, using SIDEWAYS regime")
+                logger.warning("Could not fetch NIFTY data, using SIDEWAYS regime", 
+                             extra={'fallback_regime': 'SIDEWAYS'})
                 return MarketRegime.SIDEWAYS
             
             logger.debug(f"Fetched {len(data)} NIFTY data points for regime detection")
@@ -212,12 +215,14 @@ class EnhancedEarlyWarningSystem:
             else:
                 regime = MarketRegime.SIDEWAYS
             
-            print(f"📈 Market regime detected: {regime.value.upper()}")
-            print(f"📊 NIFTY volatility: {volatility:.1%}")
+            logger.info(f"📈 Market regime detected: {regime.value.upper()}", 
+                       extra={'regime': regime.value, 'volatility': volatility, 
+                             'current_price': current_price, 'ma20': ma20, 'ma50': ma50})
             return regime
             
         except Exception as e:
-            logging.error(f"⚠️ Error detecting market regime: {e}")
+            logger.error(f"⚠️ Error detecting market regime: {e}", 
+                        extra={'error_type': type(e).__name__}, exc_info=True)
             return MarketRegime.SIDEWAYS
             
     def analyze_single_stock(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -325,16 +330,16 @@ class EnhancedEarlyWarningSystem:
     def generate_enhanced_chart(self, symbol: str, indicators: Dict[str, Any]) -> Optional[str]:
         """Generate enhanced technical analysis chart"""
         try:
-            logger.debug(f"Generating enhanced chart for {symbol}")
-            print(f"Generating enhanced chart for {symbol}...")
+            logger.debug(f"Generating enhanced chart for {symbol}", 
+                        extra={'symbol': symbol, 'operation': 'chart_generation'})
             
             # Fetch data for charting using enhanced fetcher
             ticker = yf.Ticker(symbol)
             data = ticker.history(period="6mo", auto_adjust=True)
             
             if data.empty or len(data) < 50:
-                logger.warning(f"Insufficient data for {symbol} chart: {len(data)} rows")
-                print(f"Insufficient data for {symbol} chart")
+                logger.warning(f"Insufficient data for {symbol} chart: {len(data)} rows", 
+                             extra={'symbol': symbol, 'data_points': len(data)})
                 return None
             
             logger.debug(f"Fetched {len(data)} data points for {symbol} chart")
@@ -439,16 +444,18 @@ class EnhancedEarlyWarningSystem:
             plt.tight_layout()
             
             # Save chart
-            chart_path = os.path.join(self.output_dirs['charts'], 
-                                    f"{symbol.replace('.NS', '')}_enhanced_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            chart_path = Path(self.output_dirs['charts']) / f"{symbol.replace('.NS', '')}_enhanced_chart.png"
+            plt.savefig(str(chart_path), dpi=300, bbox_inches='tight')
             plt.close()
             
-            print(f"Enhanced chart saved: {chart_path}")
-            return chart_path
+            logger.info(f"Enhanced chart saved: {chart_path}", 
+                       extra={'symbol': symbol, 'chart_path': str(chart_path)})
+            return str(chart_path)
             
         except Exception as e:
-            logging.error(f"Error generating enhanced chart for {symbol}: {e}")
+            logger.error(f"Error generating enhanced chart for {symbol}: {e}", 
+                        extra={'symbol': symbol, 'error_type': type(e).__name__}, 
+                        exc_info=True)
             return None
     
     def save_enhanced_reports(self, categorized_results: Dict[str, List[Dict]], 
@@ -482,11 +489,11 @@ class EnhancedEarlyWarningSystem:
                     for result in categorized_results['HIGH']
                 ])
                 
-                high_file = os.path.join(self.output_dirs['reports'], 
-                                       f'high_probability_enhanced_{timestamp}.csv')
-                high_prob_df.to_csv(high_file, index=False)
-                saved_files.append(high_file)
-                print(f"High probability report saved: {high_file}")
+                high_file = Path(self.output_dirs['reports']) / f'high_probability_enhanced_{timestamp}.csv'
+                high_prob_df.to_csv(str(high_file), index=False)
+                saved_files.append(str(high_file))
+                logger.info(f"High probability report saved: {high_file}", 
+                           extra={'report_type': 'high_probability', 'file_path': str(high_file)})
             
             # 2. All results comprehensive report
             all_results = []
@@ -522,15 +529,14 @@ class EnhancedEarlyWarningSystem:
                     for result in all_results
                 ])
                 
-                comprehensive_file = os.path.join(self.output_dirs['reports'], 
-                                                f'comprehensive_analysis_{timestamp}.csv')
-                comprehensive_df.to_csv(comprehensive_file, index=False)
-                saved_files.append(comprehensive_file)
-                print(f"Comprehensive report saved: {comprehensive_file}")
+                comprehensive_file = Path(self.output_dirs['reports']) / f'comprehensive_analysis_{timestamp}.csv'
+                comprehensive_df.to_csv(str(comprehensive_file), index=False)
+                saved_files.append(str(comprehensive_file))
+                logger.info(f"Comprehensive report saved: {comprehensive_file}", 
+                           extra={'report_type': 'comprehensive', 'file_path': str(comprehensive_file)})
             
             # 3. Analysis summary report
-            summary_file = os.path.join(self.output_dirs['reports'], 
-                                      f'analysis_summary_{timestamp}.txt')
+            summary_file = Path(self.output_dirs['reports']) / f'analysis_summary_{timestamp}.txt'
             
             with open(summary_file, 'w') as f:
                 f.write("ENHANCED EARLY WARNING SYSTEM ANALYSIS SUMMARY\n")
@@ -561,19 +567,22 @@ class EnhancedEarlyWarningSystem:
                                f"Score: {result['composite_score']}, "
                                f"Level: {result['probability_level']}\n")
             
-            saved_files.append(summary_file)
-            print(f"Summary report saved: {summary_file}")
+            saved_files.append(str(summary_file))
+            logger.info(f"Summary report saved: {summary_file}", 
+                       extra={'report_type': 'summary', 'file_path': str(summary_file)})
             
         except Exception as e:
-            logging.error(f"Error saving reports: {e}")
+            logger.error(f"Error saving reports: {e}", 
+                        extra={'error_type': type(e).__name__}, exc_info=True)
         
         return saved_files
     
     def run_enhanced_analysis(self) -> Dict[str, Any]:
         """Run the complete enhanced analysis pipeline"""
-        logging.warning("🚀 ENHANCED EARLY WARNING SYSTEM")
-        print("=" * 60)
-        print(f"Analyzing {len(self.nse_stocks)} stocks with advanced indicators...\n")
+        logger.info("🚀 ENHANCED EARLY WARNING SYSTEM", 
+                   extra={'operation': 'enhanced_analysis_start', 'stock_count': len(self.nse_stocks)})
+        logger.info(f"Analyzing {len(self.nse_stocks)} stocks with advanced indicators", 
+                   extra={'total_stocks': len(self.nse_stocks)})
         
         # Detect market regime
         self.market_regime = self.detect_market_regime()
@@ -591,12 +600,14 @@ class EnhancedEarlyWarningSystem:
             end_idx = min(start_idx + self.batch_size, total_stocks)
             batch = self.nse_stocks[start_idx:end_idx]
             
-            print(f"\nProcessing batch {batch_num+1}/{total_batches} ({len(batch)} stocks)...")
-            print(f"Stocks {start_idx+1}-{end_idx} of {total_stocks}")
+            logger.info(f"Processing batch {batch_num+1}/{total_batches} ({len(batch)} stocks)", 
+                       extra={'batch_num': batch_num + 1, 'total_batches': total_batches, 
+                             'batch_size': len(batch), 'stocks_range': f"{start_idx+1}-{end_idx}"})
             
             for i, symbol in enumerate(batch):
                 progress = (i + 1) / len(batch) * 100
-                print(f"[{progress:.1f}%] Analyzing {symbol}...")
+                logger.debug(f"[{progress:.1f}%] Analyzing {symbol}", 
+                           extra={'symbol': symbol, 'progress': progress, 'batch_position': i + 1})
                 
                 # Analyze stock
                 result = self.analyze_single_stock(symbol)
@@ -611,7 +622,8 @@ class EnhancedEarlyWarningSystem:
             
             # Pause between batches
             if batch_num < total_batches - 1:
-                print(f"\nPausing for {self.timeout} seconds...")
+                logger.info(f"Pausing for {self.timeout} seconds between batches", 
+                           extra={'timeout_seconds': self.timeout, 'batch_completed': batch_num + 1})
                 time.sleep(self.timeout)
         
         # Filter and categorize results
@@ -649,9 +661,9 @@ class EnhancedEarlyWarningSystem:
         # Store results for potential backtesting
         self.analysis_results = all_results
         
-        print(f"\n📊 ANALYSIS COMPLETE")
-        print(f"Total successful analysis: {len(all_results)}/{len(self.nse_stocks)}")
-        print(f"Reports saved: {len(saved_files)} files")
+        logger.info("📊 ANALYSIS COMPLETE", 
+                   extra={'total_successful': len(all_results), 'total_stocks': len(self.nse_stocks), 
+                         'reports_saved': len(saved_files), 'operation': 'analysis_complete'})
         
         return {
             'categorized_results': categorized_results,
@@ -662,19 +674,22 @@ class EnhancedEarlyWarningSystem:
     def display_analysis_results(self, categorized_results: Dict[str, List[Dict]], 
                                analysis_summary: Dict[str, Any]):
         """Display formatted analysis results"""
-        print("\n" + "=" * 80)
-        print("📈 ENHANCED ANALYSIS RESULTS")
-        print("=" * 80)
+        logger.info("📈 ENHANCED ANALYSIS RESULTS", 
+                   extra={'operation': 'results_display', 'market_regime': analysis_summary['market_regime']})
         
-        print(f"\n🌍 Market Regime: {analysis_summary['market_regime'].upper()}")
-        print(f"📊 Analysis Success Rate: {analysis_summary['success_rate']:.1f}%")
-        print(f"✅ Risk Approved Positions: {analysis_summary['risk_approved']} "
-              f"({analysis_summary['risk_approval_rate']:.1f}%)")
+        logger.info(f"🌍 Market Regime: {analysis_summary['market_regime'].upper()}", 
+                   extra={'market_regime': analysis_summary['market_regime']})
+        logger.info(f"📊 Analysis Success Rate: {analysis_summary['success_rate']:.1f}%", 
+                   extra={'success_rate': analysis_summary['success_rate']})
+        logger.info(f"✅ Risk Approved Positions: {analysis_summary['risk_approved']} "
+                   f"({analysis_summary['risk_approval_rate']:.1f}%)", 
+                   extra={'risk_approved': analysis_summary['risk_approved'], 
+                         'risk_approval_rate': analysis_summary['risk_approval_rate']})
         
         # High probability stocks
         if categorized_results['HIGH']:
-            print("\n🎯 HIGH PROBABILITY STOCKS (Score ≥ 70)")
-            print("-" * 80)
+            logger.info("🎯 HIGH PROBABILITY STOCKS (Score ≥ 70)", 
+                       extra={'high_probability_count': len(categorized_results['HIGH'])})
             
             high_df = pd.DataFrame([
                 {
@@ -690,14 +705,16 @@ class EnhancedEarlyWarningSystem:
                 for r in categorized_results['HIGH'][:15]  # Top 15
             ])
             
-            print(high_df.to_string(index=False))
+            logger.info("High probability stocks data", 
+                       extra={'high_stocks_table': high_df.to_string(index=False)})
         else:
-            print("\n❌ No HIGH probability stocks found today.")
+            logger.warning("❌ No HIGH probability stocks found today.", 
+                          extra={'high_probability_count': 0})
         
         # Medium probability stocks (top 10)
         if categorized_results['MEDIUM']:
-            print("\n📊 TOP MEDIUM PROBABILITY STOCKS (Score 45-69)")
-            print("-" * 80)
+            logger.info("📊 TOP MEDIUM PROBABILITY STOCKS (Score 45-69)", 
+                       extra={'medium_probability_count': len(categorized_results['MEDIUM'])})
             
             medium_df = pd.DataFrame([
                 {
@@ -712,14 +729,18 @@ class EnhancedEarlyWarningSystem:
                 for r in categorized_results['MEDIUM'][:10]  # Top 10
             ])
             
-            print(medium_df.to_string(index=False))
+            logger.info("Medium probability stocks data", 
+                       extra={'medium_stocks_table': medium_df.to_string(index=False)})
         
-        print(f"\n📅 Analysis completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("⚠️  This is probability-based analysis. Always do your own research!")
+        logger.info(f"📅 Analysis completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 
+                   extra={'completion_time': datetime.now().isoformat()})
+        logger.warning("⚠️  This is probability-based analysis. Always do your own research!", 
+                      extra={'disclaimer': True})
     
     def generate_charts_for_top_stocks(self, categorized_results: Dict[str, List[Dict]]):
         """Generate enhanced charts for top-scoring stocks"""
-        print("\n📈 Generating enhanced charts...")
+        logger.info("📈 Generating enhanced charts for top stocks", 
+                   extra={'operation': 'chart_generation', 'max_charts': 10})
         
         # Generate charts for top high probability stocks
         chart_count = 0
@@ -744,17 +765,19 @@ class EnhancedEarlyWarningSystem:
             chart_count += 1
             time.sleep(1)  # Rate limiting
         
-        print(f"Generated {chart_count} enhanced charts")
+        logger.info(f"Generated {chart_count} enhanced charts", 
+                   extra={'charts_generated': chart_count, 'operation': 'chart_generation_complete'})
     
     def run_backtest_analysis(self, start_date: datetime = None, 
                             end_date: datetime = None) -> Optional[Dict[str, Any]]:
         """Run backtesting analysis on historical signals"""
         if not self.analysis_results:
-            print("No analysis results available for backtesting")
+            logger.warning("No analysis results available for backtesting", 
+                          extra={'operation': 'backtest_analysis'})
             return None
         
-        print("\n🔄 RUNNING BACKTEST ANALYSIS")
-        print("=" * 50)
+        logger.info("🔄 RUNNING BACKTEST ANALYSIS", 
+                   extra={'operation': 'backtest_start', 'results_count': len(self.analysis_results)})
         
         # Setup dates
         if end_date is None:
@@ -792,20 +815,22 @@ class EnhancedEarlyWarningSystem:
             
             # Save backtest results
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backtest_file = os.path.join(self.output_dirs['backtests'], 
-                                       f'backtest_results_{timestamp}.csv')
+            backtest_file = Path(self.output_dirs['backtests']) / f'backtest_results_{timestamp}.csv'
             
             if 'trade_details' in metrics:
                 trade_df = pd.DataFrame(metrics['trade_details'])
-                trade_df.to_csv(backtest_file, index=False)
-                print(f"Backtest results saved: {backtest_file}")
+                trade_df.to_csv(str(backtest_file), index=False)
+                logger.info(f"Backtest results saved: {backtest_file}", 
+                           extra={'backtest_file': str(backtest_file), 'trade_count': len(trade_df)})
             
-            print("\n" + report)
+            logger.info("Backtest report generated", 
+                       extra={'report_content': report, 'operation': 'backtest_complete'})
             
             return metrics
             
         except Exception as e:
-            logging.error(f"Error running backtest: {e}")
+            logger.error(f"Error running backtest: {e}", 
+                        extra={'error_type': type(e).__name__}, exc_info=True)
             return None
 
 def parse_arguments():
@@ -841,11 +866,14 @@ if __name__ == "__main__":
     # Set output directory if specified
     if args.output_dir:
         try:
-            os.makedirs(args.output_dir, exist_ok=True)
+            Path(args.output_dir).mkdir(parents=True, exist_ok=True)
             os.chdir(args.output_dir)
-            print(f"Output directory: {os.path.abspath(args.output_dir)}")
+            output_path = Path(args.output_dir).resolve()
+            logger.info(f"Output directory: {output_path}", 
+                       extra={'output_directory': str(output_path)})
         except Exception as e:
-            logging.error(f"Error setting output directory: {e}")
+            logger.error(f"Error setting output directory: {e}", 
+                        extra={'error_type': type(e).__name__}, exc_info=True)
     
     # Create custom stock list if provided
     custom_stocks = None
@@ -869,11 +897,14 @@ if __name__ == "__main__":
         if args.backtest:
             ews.run_backtest_analysis()
         
-        logging.warning("\n✅ Enhanced Early Warning System analysis completed successfully!")
+        logger.info("✅ Enhanced Early Warning System analysis completed successfully!", 
+                   extra={'operation': 'main_analysis_complete'})
         
     except KeyboardInterrupt:
-        print("\n⏹️  Analysis interrupted by user")
+        logger.warning("⏹️ Analysis interrupted by user", 
+                      extra={'interruption': 'keyboard_interrupt'})
     except Exception as e:
-        logging.error(f"\n❌ Error running analysis: {e}")
+        logger.error(f"❌ Error running analysis: {e}", 
+                    extra={'error_type': type(e).__name__}, exc_info=True)
         import traceback
         traceback.print_exc()
