@@ -3,9 +3,10 @@ Advanced Technical Indicators Engine
 Implements comprehensive technical analysis indicators for the upgraded stock screening system
 """
 
+import math
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any, Union
 import warnings
 import logging
 from functools import lru_cache, wraps
@@ -16,6 +17,10 @@ try:
     from .logging_config import get_logger, timed_operation, operation_context
     from .stock_analysis_monitor import monitor
     from .robust_data_fetcher import fetch_stock_data
+    from .data.validation import (
+        DataContract, DataValidator, safe_float, safe_bool, 
+        is_valid_numeric, replace_invalid_with_nan
+    )
 except ImportError:
     # Fallback for when running as standalone
     def get_logger(name):
@@ -153,94 +158,179 @@ class AdvancedIndicator:
             return None
     
     @timing_decorator
-    def compute_volume_signals(self, data: pd.DataFrame) -> Dict[str, float]:
+    def compute_volume_signals(self, data: pd.DataFrame) -> Dict[str, Union[float, bool]]:
         """
-        Compute advanced volume signals:
+        Compute advanced volume signals with standardized validation:
         - Volume ratio (current vs 20-day SMA)
-        - Volume z-score (statistical significance)
+        - Volume z-score (statistical significance) 
         - Volume trend (5-day slope)
+        - Volume breakout signals
         
         Performance optimized: Consolidated rolling calculations
+        Data contract: Returns float for numeric values, bool for signals, math.nan for missing
         """
         if len(data) < 25:
-            return {'vol_ratio': np.nan, 'vol_z': np.nan, 'vol_trend': np.nan}
+            return {
+                'vol_ratio': math.nan, 
+                'vol_z': math.nan, 
+                'vol_trend': math.nan,
+                'volume_increasing': False,
+                'volume_breakout': False
+            }
         
-        volume = data['Volume']
-        
-        # OPTIMIZED: Compute all rolling statistics in one pass
-        vol_rolling_stats = volume.rolling(20).agg(['mean', 'std'])
-        vol_mean20 = vol_rolling_stats['mean'].iloc[-1]
-        vol_std20 = vol_rolling_stats['std'].iloc[-1]
-        
-        # Volume ratio (traditional)
-        vol_ratio = volume.iloc[-1] / vol_mean20 if vol_mean20 > 0 else np.nan
-        
-        # Volume z-score (statistical significance)
-        vol_z = (volume.iloc[-1] - vol_mean20) / vol_std20 if vol_std20 > 0 else np.nan
-        
-        # Volume trend (5-day slope) - vectorized approach
-        if len(volume) >= 5:
-            recent_volume = volume.tail(5).values
-            x = np.arange(len(recent_volume))
-            vol_trend = np.polyfit(x, recent_volume, 1)[0] / vol_mean20 if vol_mean20 > 0 else 0
-        else:
-            vol_trend = 0
-        
-        return {
-            'vol_ratio': round(vol_ratio, 2) if not np.isnan(vol_ratio) else np.nan,
-            'vol_z': round(vol_z, 2) if not np.isnan(vol_z) else np.nan,
-            'vol_trend': round(vol_trend, 4) if not np.isnan(vol_trend) else np.nan
-        }
+        try:
+            volume = data['Volume']
+            
+            # OPTIMIZED: Compute all rolling statistics in one pass
+            vol_rolling_stats = volume.rolling(20).agg(['mean', 'std'])
+            vol_mean20 = safe_float(vol_rolling_stats['mean'].iloc[-1], math.nan, 'vol_mean20')
+            vol_std20 = safe_float(vol_rolling_stats['std'].iloc[-1], math.nan, 'vol_std20')
+            current_volume = safe_float(volume.iloc[-1], math.nan, 'current_volume')
+            
+            # Volume ratio (traditional)
+            vol_ratio = (current_volume / vol_mean20) if is_valid_numeric(vol_mean20) and vol_mean20 > 0 else math.nan
+            
+            # Volume z-score (statistical significance)
+            vol_z = ((current_volume - vol_mean20) / vol_std20) if (is_valid_numeric(vol_std20) and vol_std20 > 0 and is_valid_numeric(vol_mean20)) else math.nan
+            
+            # Volume trend (5-day slope) - vectorized approach
+            if len(volume) >= 5:
+                try:
+                    recent_volume = volume.tail(5).values
+                    # Replace any NaN values with forward fill
+                    recent_volume = replace_invalid_with_nan(recent_volume)
+                    if not np.all(np.isnan(recent_volume)):
+                        x = np.arange(len(recent_volume))
+                        vol_trend_raw = np.polyfit(x, recent_volume, 1)[0]
+                        vol_trend = (vol_trend_raw / vol_mean20) if is_valid_numeric(vol_mean20) and vol_mean20 > 0 else 0
+                    else:
+                        vol_trend = math.nan
+                except Exception as e:
+                    logger.warning(f"Error computing volume trend: {e}")
+                    vol_trend = math.nan
+            else:
+                vol_trend = math.nan
+            
+            # Volume signals with safe boolean conversion
+            vol_5_avg = safe_float(volume.rolling(5).mean().iloc[-1], math.nan, 'vol_5_avg')
+            volume_increasing = safe_bool(
+                vol_5_avg > vol_mean20 if is_valid_numeric(vol_5_avg) and is_valid_numeric(vol_mean20) else None,
+                False, 'volume_increasing'
+            )
+            
+            # High volume breakout (1.5x above average)
+            volume_breakout = safe_bool(
+                vol_ratio > 1.5 if is_valid_numeric(vol_ratio) else None,
+                False, 'volume_breakout'
+            )
+            
+            return {
+                'vol_ratio': safe_float(vol_ratio, math.nan, 'vol_ratio'),
+                'vol_z': safe_float(vol_z, math.nan, 'vol_z'), 
+                'vol_trend': safe_float(vol_trend, math.nan, 'vol_trend'),
+                'volume_increasing': volume_increasing,
+                'volume_breakout': volume_breakout
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in compute_volume_signals: {e}", exc_info=True)
+            return {
+                'vol_ratio': math.nan,
+                'vol_z': math.nan,
+                'vol_trend': math.nan,
+                'volume_increasing': False,
+                'volume_breakout': False
+            }
     
     @timing_decorator
-    def compute_momentum_signals(self, data: pd.DataFrame) -> Dict[str, float]:
+    def compute_momentum_signals(self, data: pd.DataFrame) -> Dict[str, Union[float, bool]]:
         """
-        Compute advanced momentum signals:
+        Compute advanced momentum signals with standardized validation:
         - RSI (14-period Wilder's)
         - MACD with histogram momentum
         - MACD normalized strength
+        - Momentum signal flags
+        
+        Data contract: Returns float for numeric values, bool for signals, math.nan for missing
         """
         if len(data) < 35:
-            return {'rsi': np.nan, 'macd': np.nan, 'macd_signal': np.nan, 
-                   'macd_hist': np.nan, 'macd_strength': np.nan}
+            return {
+                'rsi': math.nan, 
+                'macd': math.nan, 
+                'macd_signal': math.nan, 
+                'macd_hist': math.nan, 
+                'macd_strength': math.nan,
+                'rsi_bullish': False,
+                'macd_bullish': False
+            }
         
-        close = data['Close']
-        
-        # RSI (Wilder's method)
-        delta = close.diff()
-        up = delta.clip(lower=0)
-        down = -delta.clip(upper=0)
-        
-        # Use Wilder's smoothing (alpha = 1/14)
-        alpha = 1/14
-        up_ewm = up.ewm(alpha=alpha, adjust=False).mean()
-        down_ewm = down.ewm(alpha=alpha, adjust=False).mean()
-        
-        rs = up_ewm / down_ewm
-        rsi = 100 - (100 / (1 + rs))
-        current_rsi = rsi.iloc[-1]
-        
-        # MACD (12, 26, 9)
-        exp12 = close.ewm(span=12, adjust=False).mean()
-        exp26 = close.ewm(span=26, adjust=False).mean()
-        macd_line = exp12 - exp26
-        signal_line = macd_line.ewm(span=9, adjust=False).mean()
-        histogram = macd_line - signal_line
-        
-        current_macd = macd_line.iloc[-1]
-        current_signal = signal_line.iloc[-1]
-        current_hist = histogram.iloc[-1]
-        
-        # MACD normalized strength
-        macd_strength = (current_macd - current_signal) / abs(current_signal) if abs(current_signal) > 1e-8 else 0
-        
-        return {
-            'rsi': round(current_rsi, 2) if not np.isnan(current_rsi) else np.nan,
-            'macd': round(current_macd, 6) if not np.isnan(current_macd) else np.nan,
-            'macd_signal': round(current_signal, 6) if not np.isnan(current_signal) else np.nan,
-            'macd_hist': round(current_hist, 6) if not np.isnan(current_hist) else np.nan,
-            'macd_strength': round(macd_strength, 4) if not np.isnan(macd_strength) else np.nan
-        }
+        try:
+            close = data['Close']
+            
+            # RSI (Wilder's method) with safe calculations
+            delta = close.diff()
+            up = delta.clip(lower=0)
+            down = -delta.clip(upper=0)
+            
+            # Use Wilder's smoothing (alpha = 1/14)
+            alpha = 1/14
+            up_ewm = up.ewm(alpha=alpha, adjust=False).mean()
+            down_ewm = down.ewm(alpha=alpha, adjust=False).mean()
+            
+            # Safe RSI calculation
+            rs = up_ewm / down_ewm
+            rsi = 100 - (100 / (1 + rs))
+            current_rsi = safe_float(rsi.iloc[-1], math.nan, 'current_rsi')
+            
+            # MACD (12, 26, 9) with safe calculations
+            exp12 = close.ewm(span=12, adjust=False).mean()
+            exp26 = close.ewm(span=26, adjust=False).mean()
+            macd_line = exp12 - exp26
+            signal_line = macd_line.ewm(span=9, adjust=False).mean()
+            histogram = macd_line - signal_line
+            
+            current_macd = safe_float(macd_line.iloc[-1], math.nan, 'current_macd')
+            current_signal = safe_float(signal_line.iloc[-1], math.nan, 'current_signal')
+            current_hist = safe_float(histogram.iloc[-1], math.nan, 'current_hist')
+            
+            # MACD normalized strength with safe division
+            if is_valid_numeric(current_signal) and abs(current_signal) > 1e-8:
+                macd_strength = (current_macd - current_signal) / abs(current_signal) if is_valid_numeric(current_macd) else math.nan
+            else:
+                macd_strength = 0.0
+            
+            # Signal flags with safe boolean conversion
+            rsi_bullish = safe_bool(
+                30 <= current_rsi <= 70 if is_valid_numeric(current_rsi) else None,
+                False, 'rsi_bullish'
+            )
+            
+            macd_bullish = safe_bool(
+                current_macd > current_signal if is_valid_numeric(current_macd) and is_valid_numeric(current_signal) else None,
+                False, 'macd_bullish'
+            )
+            
+            return {
+                'rsi': current_rsi,
+                'macd': current_macd,
+                'macd_signal': current_signal,
+                'macd_hist': current_hist,
+                'macd_strength': safe_float(macd_strength, math.nan, 'macd_strength'),
+                'rsi_bullish': rsi_bullish,
+                'macd_bullish': macd_bullish
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in compute_momentum_signals: {e}", exc_info=True)
+            return {
+                'rsi': math.nan,
+                'macd': math.nan,
+                'macd_signal': math.nan,
+                'macd_hist': math.nan,
+                'macd_strength': math.nan,
+                'rsi_bullish': False,
+                'macd_bullish': False
+            }
     
     def compute_trend_signals(self, data: pd.DataFrame) -> Dict[str, float]:
         """
@@ -564,10 +654,18 @@ class AdvancedIndicator:
             return {'weekly_rsi_trend': 0, 'weekly_macd_bullish': False, 'weekly_vol_trend': 0}
     
     @timed_operation("compute_all_indicators")
-    def compute_all_indicators(self, symbol: str, period: str = "6mo") -> Dict[str, Any]:
+    def compute_all_indicators(self, symbol: str, period: str = "6mo") -> Optional[DataContract.IndicatorDict]:
         """
-        Compute all indicators for a given symbol
-        Returns comprehensive dictionary of all technical indicators
+        Compute all indicators for a given symbol with standardized data validation.
+        
+        Returns comprehensive dictionary of all technical indicators according to DataContract.
+        
+        Data Contract:
+        - Returns None only for critical failures (no data, computation errors)
+        - All numeric indicators return float type with math.nan for missing values
+        - Boolean indicators return actual bool type
+        - String indicators return str type with empty string for missing
+        - All values are validated and sanitized before return
         
         Performance optimized: Includes timing monitoring for batch operations
         Corporate action aware: Uses auto_adjust=True for proper split/dividend handling
@@ -613,34 +711,58 @@ class AdvancedIndicator:
                 
                 indicator_duration = time.time() - indicator_start
                 
-                # Combine all indicators
-                all_indicators = {
-                    'symbol': symbol,
-                    'current_price': round(data['Close'].iloc[-1], 2),
-                    'price_change_pct': round(((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100, 2),
-                    **volume_signals,
-                    **momentum_signals,
-                    **trend_signals,
-                    **volatility_signals,
-                    **relative_strength,
-                    **volume_profile,
-                    **weekly_confirm
-                }
+                # Build raw indicators dictionary with safe value handling
+                try:
+                    current_price = safe_float(data['Close'].iloc[-1], math.nan, 'current_price')
+                    prev_price = safe_float(data['Close'].iloc[-2], math.nan, 'prev_price')
+                    price_change_pct = ((current_price - prev_price) / prev_price * 100) if is_valid_numeric(prev_price) and prev_price != 0 else math.nan
+                    
+                    raw_indicators = {
+                        'symbol': str(symbol),
+                        'current_price': current_price,
+                        'price_change_pct': safe_float(price_change_pct, math.nan, 'price_change_pct'),
+                        **volume_signals,
+                        **momentum_signals,
+                        **trend_signals,
+                        **volatility_signals,
+                        **relative_strength,
+                        **volume_profile,
+                        **weekly_confirm
+                    }
+                except Exception as e:
+                    logger.error(f"Error building indicators dictionary for {symbol}: {e}", 
+                               extra={'symbol': symbol}, exc_info=True)
+                    monitor.record_indicator_computation(symbol, time.time() - start_time, False, "build_error")
+                    return None
+                
+                # Validate the complete indicators dictionary using our data contract
+                validator = DataValidator()
+                validated_indicators = validator.validate_indicators_dict(raw_indicators, symbol)
+                
+                if validated_indicators is None:
+                    logger.error(f"Critical validation failure for {symbol} indicators")
+                    monitor.record_indicator_computation(symbol, time.time() - start_time, False, "validation_failure")
+                    return None
+                
+                # Log validation results
+                validator.log_validation_results(symbol)
                 
                 # Log successful completion
                 total_duration = time.time() - start_time
                 logger.info(f"Successfully computed indicators for {symbol}", extra={
                     'symbol': symbol,
-                    'indicator_count': len(all_indicators),
+                    'indicator_count': len(validated_indicators),
                     'data_points': len(data),
                     'total_duration': total_duration,
-                    'indicator_computation_time': indicator_duration
+                    'indicator_computation_time': indicator_duration,
+                    'validation_warnings': len([r for r in validator.validation_results if r.severity.value == 'warning']),
+                    'validation_errors': len([r for r in validator.validation_results if r.severity.value in ['error', 'critical']])
                 })
                 
                 # Record monitoring metrics
                 monitor.record_indicator_computation(symbol, total_duration, True)
                 
-                return all_indicators
+                return validated_indicators
                 
             except Exception as e:
                 total_duration = time.time() - start_time

@@ -11,6 +11,9 @@ import pandas as pd
 from .common.enums import MarketRegime, ProbabilityLevel
 from .common.volume_thresholds import VolumeThresholdCalculator, DEFAULT_VOLUME_CONFIG
 
+# Data validation imports
+from .data.validation import DataContract, DataValidator, safe_float, safe_bool, is_valid_numeric
+
 class CompositeScorer:
     """
     Implements the composite scoring system with:
@@ -69,22 +72,23 @@ class CompositeScorer:
     
     def score_volume_component(self, indicators: Dict[str, Any], regime: MarketRegime = MarketRegime.SIDEWAYS) -> Tuple[int, Dict[str, Any]]:
         """
-        Score volume component (25 points max):
+        Score volume component (25 points max) with safe value extraction:
         - Volume z-score: 15 points max
         - Volume ratio: 10 points max
         """
         score = 0
         breakdown = {}
         
-        vol_z = indicators.get('vol_z', np.nan)
-        vol_ratio = indicators.get('vol_ratio', np.nan)
+        # Safe value extraction with validation
+        vol_z = safe_float(indicators.get('vol_z', np.nan), np.nan, 'vol_z')
+        vol_ratio = safe_float(indicators.get('vol_ratio', np.nan), np.nan, 'vol_ratio')
         
         # Get regime-adjusted thresholds
         regime_settings = self.regime_adjustments[regime]
-        vol_threshold = regime_settings['vol_threshold']
+        vol_threshold = regime_settings.get('vol_threshold', 1.5)
         
-        # Volume z-score scoring
-        if not np.isnan(vol_z):
+        # Volume z-score scoring with safe numeric checks
+        if is_valid_numeric(vol_z):
             if vol_z >= 3:
                 z_score = 15
                 breakdown['vol_z_level'] = 'EXTREME'
@@ -102,7 +106,7 @@ class CompositeScorer:
             breakdown['vol_z_level'] = 'NO_DATA'
         
         # Volume ratio scoring (adjusted for regime using new threshold calculator)
-        if not np.isnan(vol_ratio):
+        if is_valid_numeric(vol_ratio):
             # Use the volume threshold calculator for proper regime-specific thresholds
             ratio_score, level = self.volume_calculator.get_volume_score_and_level(
                 vol_ratio=vol_ratio,
@@ -455,30 +459,72 @@ class CompositeScorer:
     
     def compute_composite_score(self, indicators: Dict[str, Any], regime: MarketRegime = MarketRegime.SIDEWAYS) -> Dict[str, Any]:
         """
-        Compute the complete composite score with detailed breakdown
+        Compute the complete composite score with detailed breakdown and input validation.
+        
+        Args:
+            indicators: Dictionary of indicators - must conform to DataContract.IndicatorDict
+            regime: Market regime for scoring adjustment
+            
+        Returns:
+            Complete score breakdown or None for critical validation failures
         """
+        
+        # Input validation at ingestion point
         if indicators is None:
+            logging.warning("Received None indicators in compute_composite_score")
             return None
         
-        total_score = 0
-        full_breakdown = {
-            'symbol': indicators.get('symbol', 'UNKNOWN'),
-            'market_regime': regime.value,
-            'components': {}
-        }
+        # Validate indicators using our data contract
+        validator = DataValidator()
+        validated_indicators = validator.validate_indicators_dict(indicators, indicators.get('symbol', 'UNKNOWN'))
         
-        # Score each component
-        vol_score, vol_breakdown = self.score_volume_component(indicators, regime)
-        momentum_score, momentum_breakdown = self.score_momentum_component(indicators, regime)
-        trend_score, trend_breakdown = self.score_trend_component(indicators)
-        volatility_score, volatility_breakdown = self.score_volatility_component(indicators)
-        rel_strength_score, rel_breakdown = self.score_relative_strength_component(indicators)
-        vp_score, vp_breakdown = self.score_volume_profile_component(indicators)
-        weekly_score, weekly_breakdown = self.score_weekly_confirmation(indicators)
+        if validated_indicators is None:
+            logging.error(f"Critical validation failure for indicators in composite scoring: {indicators.get('symbol', 'UNKNOWN')}")
+            return None
         
-        # Calculate total
-        total_score = (vol_score + momentum_score + trend_score + 
-                      volatility_score + rel_strength_score + vp_score + weekly_score)
+        # Log any validation warnings
+        if validator.validation_results:
+            validation_warnings = [r for r in validator.validation_results if r.severity.value == 'warning']
+            validation_errors = [r for r in validator.validation_results if r.severity.value in ['error', 'critical']]
+            
+            if validation_warnings:
+                logging.warning(f"Validation warnings for {validated_indicators.get('symbol', 'UNKNOWN')}: {len(validation_warnings)} issues")
+            
+            if validation_errors:
+                logging.error(f"Validation errors for {validated_indicators.get('symbol', 'UNKNOWN')}: {len(validation_errors)} critical issues")
+        
+        # Use validated indicators for scoring with fallback handling
+        try:
+            total_score = 0
+            full_breakdown = {
+                'symbol': validated_indicators.get('symbol', 'UNKNOWN'),
+                'market_regime': regime.value,
+                'components': {},
+                'validation_warnings': len([r for r in validator.validation_results if r.severity.value == 'warning']) if validator.validation_results else 0
+            }
+            
+            # Score each component with graceful degradation
+            vol_score, vol_breakdown = self.score_volume_component(validated_indicators, regime)
+            momentum_score, momentum_breakdown = self.score_momentum_component(validated_indicators, regime)
+            trend_score, trend_breakdown = self.score_trend_component(validated_indicators)
+            volatility_score, volatility_breakdown = self.score_volatility_component(validated_indicators)
+            rel_strength_score, rel_breakdown = self.score_relative_strength_component(validated_indicators)
+            vp_score, vp_breakdown = self.score_volume_profile_component(validated_indicators)
+            weekly_score, weekly_breakdown = self.score_weekly_confirmation(validated_indicators)
+            
+            # Calculate total with safe arithmetic
+            component_scores = [vol_score, momentum_score, trend_score, volatility_score, rel_strength_score, vp_score, weekly_score]
+            valid_scores = [score for score in component_scores if is_valid_numeric(score)]
+            
+            if not valid_scores:
+                logging.warning(f"No valid component scores for {validated_indicators.get('symbol', 'UNKNOWN')}")
+                total_score = 0
+            else:
+                total_score = safe_float(sum(valid_scores), 0, 'total_score')
+        
+        except Exception as e:
+            logging.error(f"Error computing composite score for {validated_indicators.get('symbol', 'UNKNOWN')}: {e}", exc_info=True)
+            return None
         
         # Store breakdown
         full_breakdown['components'] = {
