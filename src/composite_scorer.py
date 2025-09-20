@@ -8,7 +8,8 @@ import pandas as pd
 from typing import Dict, Any, Tuple, Optional
 
 # Import shared enums from centralized location
-from common.enums import MarketRegime, ProbabilityLevel
+from .common.enums import MarketRegime, ProbabilityLevel
+from .common.volume_thresholds import VolumeThresholdCalculator, DEFAULT_VOLUME_CONFIG
 
 class CompositeScorer:
     """
@@ -43,6 +44,12 @@ class CompositeScorer:
             'medium': 45
         }
         
+        # Volume threshold calculator for regime-specific volume analysis
+        self.volume_calculator = VolumeThresholdCalculator(DEFAULT_VOLUME_CONFIG)
+        
+        # Track current symbol for volume calculator context
+        self.current_symbol = None
+        
         # Market regime adjustments
         self.regime_adjustments = {
             MarketRegime.BULLISH: {'rsi_min': 58, 'rsi_max': 82, 'vol_threshold': 2.5},
@@ -50,6 +57,15 @@ class CompositeScorer:
             MarketRegime.BEARISH: {'rsi_min': 62, 'rsi_max': 78, 'vol_threshold': 4.0},
             MarketRegime.HIGH_VOLATILITY: {'rsi_min': 65, 'rsi_max': 75, 'vol_threshold': 5.0}  # Added for completeness
         }
+    
+    def set_current_symbol(self, symbol: str):
+        """
+        Set the current symbol being analyzed for volume calculator context.
+        
+        Args:
+            symbol: Stock symbol being analyzed
+        """
+        self.current_symbol = symbol
     
     def score_volume_component(self, indicators: Dict[str, Any], regime: MarketRegime = MarketRegime.SIDEWAYS) -> Tuple[int, Dict[str, Any]]:
         """
@@ -85,17 +101,16 @@ class CompositeScorer:
             z_score = 0
             breakdown['vol_z_level'] = 'NO_DATA'
         
-        # Volume ratio scoring (adjusted for regime)
+        # Volume ratio scoring (adjusted for regime using new threshold calculator)
         if not np.isnan(vol_ratio):
-            if vol_ratio >= vol_threshold * 1.67:  # 5x for neutral becomes ~8.3x for bear
-                ratio_score = 10
-                breakdown['vol_ratio_level'] = 'EXTREME'
-            elif vol_ratio >= vol_threshold:
-                ratio_score = 5
-                breakdown['vol_ratio_level'] = 'HIGH'
-            else:
-                ratio_score = 0
-                breakdown['vol_ratio_level'] = 'LOW'
+            # Use the volume threshold calculator for proper regime-specific thresholds
+            ratio_score, level = self.volume_calculator.get_volume_score_and_level(
+                vol_ratio=vol_ratio,
+                regime=regime,
+                historical_vol_ratios=None,  # Could be enhanced with historical data later
+                symbol=self.current_symbol or 'UNKNOWN'
+            )
+            breakdown['vol_ratio_level'] = level
         else:
             ratio_score = 0
             breakdown['vol_ratio_level'] = 'NO_DATA'
