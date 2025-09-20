@@ -128,61 +128,91 @@ class FreshnessCheck(ValidationRule):
         metadata = metadata or {}
         
         if data.empty:
-            issues.append(ValidationIssue(
-                rule_name=self.name,
-                level=ValidationLevel.CRITICAL,
-                message=f"No data available for {symbol}",
-                symbol=symbol
-            ))
-            return issues
+            return self._create_empty_data_issue(symbol)
         
         current_time = datetime.now()
         
         # Check last data point date
-        if 'Date' in data.columns:
-            try:
-                last_date = pd.to_datetime(data['Date']).max()
-                
-                # Calculate business hours since last update
-                if self.market_hours_only:
-                    age_hours = self._calculate_business_hours_age(last_date, current_time)
-                else:
-                    age_hours = (current_time - last_date).total_seconds() / 3600
-                
-                if age_hours > self.max_age_hours:
-                    level = ValidationLevel.CRITICAL if age_hours > 48 else ValidationLevel.ERROR
-                    issues.append(ValidationIssue(
-                        rule_name=self.name,
-                        level=level,
-                        message=f"Data is {age_hours:.1f} hours old (max: {self.max_age_hours}) - T+1 violation",
-                        symbol=symbol,
-                        metadata={"age_hours": age_hours, "last_date": last_date.isoformat()}
-                    ))
-            except Exception as e:
-                issues.append(ValidationIssue(
-                    rule_name=self.name,
-                    level=ValidationLevel.ERROR,
-                    message=f"Failed to check date freshness: {e}",
-                    symbol=symbol
-                ))
+        issues.extend(self._validate_data_freshness(symbol, data, current_time))
         
         # Check metadata timestamp if available
-        if 'last_update' in metadata:
-            try:
-                last_update = datetime.fromisoformat(metadata['last_update'])
-                meta_age_hours = (current_time - last_update).total_seconds() / 3600
-                
-                if meta_age_hours > self.max_age_hours:
-                    issues.append(ValidationIssue(
-                        rule_name=self.name,
-                        level=ValidationLevel.WARNING,
-                        message=f"Metadata indicates data is {meta_age_hours:.1f} hours old",
-                        symbol=symbol,
-                        metadata={"metadata_age_hours": meta_age_hours}
-                    ))
-            except Exception:
-                pass  # Ignore metadata parsing errors
+        issues.extend(self._validate_metadata_freshness(symbol, metadata, current_time))
         
+        return issues
+    
+    def _create_empty_data_issue(self, symbol: str) -> List[ValidationIssue]:
+        """Create validation issue for empty data."""
+        return [ValidationIssue(
+            rule_name=self.name,
+            level=ValidationLevel.CRITICAL,
+            message=f"No data available for {symbol}",
+            symbol=symbol
+        )]
+    
+    def _validate_data_freshness(self, symbol: str, data: pd.DataFrame, current_time: datetime) -> List[ValidationIssue]:
+        """Validate freshness of data based on Date column."""
+        issues = []
+        
+        if 'Date' not in data.columns:
+            return issues
+            
+        try:
+            last_date = pd.to_datetime(data['Date']).max()
+            age_hours = self._calculate_age_hours(last_date, current_time)
+            
+            if age_hours > self.max_age_hours:
+                issues.append(self._create_freshness_issue(symbol, age_hours, last_date))
+                
+        except Exception as e:
+            issues.append(ValidationIssue(
+                rule_name=self.name,
+                level=ValidationLevel.ERROR,
+                message=f"Failed to check date freshness: {e}",
+                symbol=symbol
+            ))
+            
+        return issues
+    
+    def _calculate_age_hours(self, last_date: datetime, current_time: datetime) -> float:
+        """Calculate age in hours, considering market hours if enabled."""
+        if self.market_hours_only:
+            return self._calculate_business_hours_age(last_date, current_time)
+        else:
+            return (current_time - last_date).total_seconds() / 3600
+    
+    def _create_freshness_issue(self, symbol: str, age_hours: float, last_date: datetime) -> ValidationIssue:
+        """Create a freshness validation issue."""
+        level = ValidationLevel.CRITICAL if age_hours > 48 else ValidationLevel.ERROR
+        return ValidationIssue(
+            rule_name=self.name,
+            level=level,
+            message=f"Data is {age_hours:.1f} hours old (max: {self.max_age_hours}) - T+1 violation",
+            symbol=symbol,
+            metadata={"age_hours": age_hours, "last_date": last_date.isoformat()}
+        )
+    
+    def _validate_metadata_freshness(self, symbol: str, metadata: Dict[str, Any], current_time: datetime) -> List[ValidationIssue]:
+        """Validate freshness based on metadata timestamp."""
+        issues = []
+        
+        if 'last_update' not in metadata:
+            return issues
+            
+        try:
+            last_update = datetime.fromisoformat(metadata['last_update'])
+            meta_age_hours = (current_time - last_update).total_seconds() / 3600
+            
+            if meta_age_hours > self.max_age_hours:
+                issues.append(ValidationIssue(
+                    rule_name=self.name,
+                    level=ValidationLevel.WARNING,
+                    message=f"Metadata indicates data is {meta_age_hours:.1f} hours old",
+                    symbol=symbol,
+                    metadata={"metadata_age_hours": meta_age_hours}
+                ))
+        except Exception:
+            pass  # Ignore metadata parsing errors
+            
         return issues
     
     def _calculate_business_hours_age(self, last_date: datetime, current_time: datetime) -> float:
@@ -344,36 +374,69 @@ class EnhancedConsistencyCheck(ValidationRule):
         critical_cols = ['Open', 'High', 'Low', 'Close']
         important_cols = ['Volume']
         
+        # Validate critical columns
+        issues.extend(self._validate_critical_columns(symbol, data, critical_cols))
+        
+        # Validate important columns
+        issues.extend(self._validate_important_columns(symbol, data, important_cols))
+        
+        return issues
+    
+    def _validate_critical_columns(self, symbol: str, data: pd.DataFrame, critical_cols: List[str]) -> List[ValidationIssue]:
+        """Validate critical columns for missing values."""
+        issues = []
+        
         for col in critical_cols:
             if col in data.columns:
-                missing_count = data[col].isna().sum()
-                missing_pct = (missing_count / len(data)) * 100
+                missing_stats = self._calculate_missing_stats(data, col)
                 
-                if missing_count > 0:
-                    level = ValidationLevel.CRITICAL if missing_pct > 2 else ValidationLevel.ERROR
-                    issues.append(ValidationIssue(
-                        rule_name=self.name,
-                        level=level,
-                        message=f"Missing critical data: {col} has {missing_count} NaN values ({missing_pct:.1f}%)",
-                        symbol=symbol,
-                        metadata={"column": col, "missing_count": missing_count, "missing_pct": missing_pct}
-                    ))
-        
-        for col in important_cols:
-            if col in data.columns:
-                missing_count = data[col].isna().sum()
-                missing_pct = (missing_count / len(data)) * 100
-                
-                if missing_pct > 5:  # >5% missing volume is concerning
-                    issues.append(ValidationIssue(
-                        rule_name=self.name,
-                        level=ValidationLevel.WARNING,
-                        message=f"Missing volume data: {missing_count} NaN values ({missing_pct:.1f}%)",
-                        symbol=symbol,
-                        metadata={"column": col, "missing_count": missing_count, "missing_pct": missing_pct}
+                if missing_stats['count'] > 0:
+                    level = ValidationLevel.CRITICAL if missing_stats['pct'] > 2 else ValidationLevel.ERROR
+                    issues.append(self._create_missing_data_issue(
+                        symbol, col, missing_stats, level, "critical"
                     ))
         
         return issues
+    
+    def _validate_important_columns(self, symbol: str, data: pd.DataFrame, important_cols: List[str]) -> List[ValidationIssue]:
+        """Validate important columns for missing values."""
+        issues = []
+        
+        for col in important_cols:
+            if col in data.columns:
+                missing_stats = self._calculate_missing_stats(data, col)
+                
+                if missing_stats['pct'] > 5:  # >5% missing volume is concerning
+                    issues.append(self._create_volume_missing_issue(symbol, col, missing_stats))
+        
+        return issues
+    
+    def _calculate_missing_stats(self, data: pd.DataFrame, col: str) -> Dict[str, float]:
+        """Calculate missing data statistics for a column."""
+        missing_count = data[col].isna().sum()
+        missing_pct = (missing_count / len(data)) * 100
+        return {'count': missing_count, 'pct': missing_pct}
+    
+    def _create_missing_data_issue(self, symbol: str, col: str, missing_stats: Dict[str, float], 
+                                  level: ValidationLevel, data_type: str) -> ValidationIssue:
+        """Create a validation issue for missing data."""
+        return ValidationIssue(
+            rule_name=self.name,
+            level=level,
+            message=f"Missing {data_type} data: {col} has {missing_stats['count']} NaN values ({missing_stats['pct']:.1f}%)",
+            symbol=symbol,
+            metadata={"column": col, "missing_count": missing_stats['count'], "missing_pct": missing_stats['pct']}
+        )
+    
+    def _create_volume_missing_issue(self, symbol: str, col: str, missing_stats: Dict[str, float]) -> ValidationIssue:
+        """Create a validation issue for missing volume data."""
+        return ValidationIssue(
+            rule_name=self.name,
+            level=ValidationLevel.WARNING,
+            message=f"Missing volume data: {missing_stats['count']} NaN values ({missing_stats['pct']:.1f}%)",
+            symbol=symbol,
+            metadata={"column": col, "missing_count": missing_stats['count'], "missing_pct": missing_stats['pct']}
+        )
     
     def _detect_price_anomalies(self, symbol: str, data: pd.DataFrame) -> List[ValidationIssue]:
         """Detect price anomalies and suspicious patterns."""
@@ -560,7 +623,7 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
         if dates1 is None or dates2 is None:
             return []
         
-        common = list(set(dates1) & set(dates2))
+        common = set(dates1) & set(dates2)
         return sorted(common)
     
     def _extract_dates(self, data: pd.DataFrame) -> Optional[List[datetime]]:
@@ -808,33 +871,56 @@ class EnhancedDataValidator:
     def validate_multiple_sources(self, symbol: str, data_sources: Dict[str, pd.DataFrame],
                                  data_type: str = "ohlcv") -> EnhancedValidationResult:
         """Validate data from multiple sources with cross-provider analysis."""
+        result = self._initialize_multi_source_result(symbol, data_type, data_sources)
+        
+        # Run cross-provider discrepancy checks
+        self._run_cross_provider_checks(symbol, data_sources, result)
+        
+        # Run single-source validations on each source
+        self._run_single_source_validations(symbol, data_sources, data_type, result)
+        
+        # Finalize result
+        self._finalize_multi_source_result(result, data_sources)
+        
+        return result
+    
+    def _initialize_multi_source_result(self, symbol: str, data_type: str, 
+                                       data_sources: Dict[str, pd.DataFrame]) -> EnhancedValidationResult:
+        """Initialize validation result for multi-source analysis."""
         result = EnhancedValidationResult(symbol=symbol, data_type=data_type, status=ValidationStatus.PASSED)
         result.metadata.update({
             'sources': list(data_sources.keys()),
             'source_data_counts': {src: len(data) for src, data in data_sources.items()},
             'validation_timestamp': datetime.now().isoformat()
         })
-        
-        # Run cross-provider discrepancy checks
+        return result
+    
+    def _run_cross_provider_checks(self, symbol: str, data_sources: Dict[str, pd.DataFrame], 
+                                  result: EnhancedValidationResult) -> None:
+        """Run cross-provider discrepancy checks."""
         for rule in self.rules:
-            if isinstance(rule, CrossProviderDiscrepancyCheck) and rule.enabled:
-                try:
-                    issues = rule.validate_multiple_sources(symbol, data_sources)
-                    result.issues.extend(issues)
+            if not (isinstance(rule, CrossProviderDiscrepancyCheck) and rule.enabled):
+                continue
+                
+            try:
+                issues = rule.validate_multiple_sources(symbol, data_sources)
+                result.issues.extend(issues)
+                
+                if issues:
+                    self.logger.info(f"Cross-provider analysis found {len(issues)} discrepancies for {symbol}")
                     
-                    if issues:
-                        self.logger.info(f"Cross-provider analysis found {len(issues)} discrepancies for {symbol}")
-                        
-                except Exception as e:
-                    self.logger.error(f"Multi-source validation failed for {symbol}: {e}")
-                    result.add_issue(
-                        rule_name=rule.name,
-                        level=ValidationLevel.ERROR,
-                        message=f"Multi-source validation failed: {e}",
-                        error_type="multi_source_validation_failure"
-                    )
-        
-        # Run single-source validations on each source
+            except Exception as e:
+                self.logger.error(f"Multi-source validation failed for {symbol}: {e}")
+                result.add_issue(
+                    rule_name=rule.name,
+                    level=ValidationLevel.ERROR,
+                    message=f"Multi-source validation failed: {e}",
+                    error_type="multi_source_validation_failure"
+                )
+    
+    def _run_single_source_validations(self, symbol: str, data_sources: Dict[str, pd.DataFrame],
+                                      data_type: str, result: EnhancedValidationResult) -> None:
+        """Run single-source validations on each data source."""
         for source_name, data in data_sources.items():
             if data.empty:
                 continue
@@ -846,7 +932,10 @@ class EnhancedDataValidator:
                 issue.metadata['data_source'] = source_name
             
             result.issues.extend(single_result.issues)
-        
+    
+    def _finalize_multi_source_result(self, result: EnhancedValidationResult, 
+                                     data_sources: Dict[str, pd.DataFrame]) -> None:
+        """Finalize multi-source validation result."""
         # Determine overall status
         if result.has_errors:
             result.status = ValidationStatus.FAILED
@@ -858,8 +947,6 @@ class EnhancedDataValidator:
                                          if i.metadata.get('data_source') == src])
                                 for src in data_sources.keys()}
         })
-        
-        return result
     
     def create_validation_report(self, results: List[EnhancedValidationResult]) -> Dict[str, Any]:
         """Create comprehensive validation report with analytics."""
@@ -1040,6 +1127,20 @@ class EnhancedDataValidator:
             "timestamp": result.timestamp.isoformat(),
             "metadata": result.metadata
         }
+    
+    def validate_indicators_dict(self, indicators: Optional[Dict[str, Any]], symbol: str = "UNKNOWN"):
+        """
+        Backward compatibility method for validating indicator dictionaries.
+        
+        Args:
+            indicators: Dictionary of indicators to validate
+            symbol: Symbol being validated
+            
+        Returns:
+            Validated and cleaned indicators dictionary, or None on critical failure
+        """
+        # Use the standalone function for backward compatibility
+        return validate_indicators_dict(indicators, symbol)
 
 
 @dataclass
@@ -1376,59 +1477,82 @@ class DataHealthMonitor:
         
         for symbol in symbols:
             try:
-                # This would fetch actual data for validation
-                # For now, simulate data quality check
-                
-                # Mock data quality metrics
-                quality_metrics = {
-                    "completeness_pct": 98.5,
-                    "freshness_hours": 18.2,
-                    "consistency_score": 95.1,
-                    "anomaly_count": 2,
-                    "last_update": datetime.now() - timedelta(hours=18.2)
-                }
-                
-                issues = []
-                
-                if quality_metrics["completeness_pct"] < 95:
-                    issues.append(f"Low completeness: {quality_metrics['completeness_pct']:.1f}%")
-                
-                if quality_metrics["freshness_hours"] > 25:
-                    issues.append(f"Stale data: {quality_metrics['freshness_hours']:.1f} hours old")
-                
-                if quality_metrics["consistency_score"] < 90:
-                    issues.append(f"Consistency issues: {quality_metrics['consistency_score']:.1f}/100")
-                
-                if quality_metrics["anomaly_count"] > 5:
-                    issues.append(f"High anomaly count: {quality_metrics['anomaly_count']}")
-                
-                # Determine status
-                if not issues:
-                    status = "PASS"
-                    message = f"Data quality good for {symbol}"
-                elif len(issues) == 1 and "anomaly" in issues[0]:
-                    status = "WARN"
-                    message = f"Minor issues for {symbol}: {'; '.join(issues)}"
-                else:
-                    status = "WARN" if quality_metrics["freshness_hours"] <= 25 else "FAIL"
-                    message = f"Quality issues for {symbol}: {'; '.join(issues)}"
-                
-                results.append(HealthCheckResult(
-                    check_name=f"Data Quality - {symbol}",
-                    status=status,
-                    message=message,
-                    details=quality_metrics
-                ))
+                quality_result = self._perform_single_symbol_quality_check(symbol)
+                results.append(quality_result)
                 
             except Exception as e:
-                results.append(HealthCheckResult(
-                    check_name=f"Data Quality - {symbol}",
-                    status="FAIL",
-                    message=f"Quality check failed for {symbol}: {e}",
-                    details={"symbol": symbol, "error": str(e)}
-                ))
+                results.append(self._create_failed_quality_check(symbol, e))
         
         return results
+    
+    def _perform_single_symbol_quality_check(self, symbol: str) -> HealthCheckResult:
+        """Perform quality check for a single symbol."""
+        # This would fetch actual data for validation
+        # For now, simulate data quality check
+        quality_metrics = self._get_mock_quality_metrics()
+        
+        issues = self._analyze_quality_metrics(quality_metrics)
+        status, message = self._determine_quality_status(symbol, issues, quality_metrics)
+        
+        return HealthCheckResult(
+            check_name=f"Data Quality - {symbol}",
+            status=status,
+            message=message,
+            details=quality_metrics
+        )
+    
+    def _get_mock_quality_metrics(self) -> Dict[str, Any]:
+        """Get mock data quality metrics."""
+        return {
+            "completeness_pct": 98.5,
+            "freshness_hours": 18.2,
+            "consistency_score": 95.1,
+            "anomaly_count": 2,
+            "last_update": datetime.now() - timedelta(hours=18.2)
+        }
+    
+    def _analyze_quality_metrics(self, quality_metrics: Dict[str, Any]) -> List[str]:
+        """Analyze quality metrics and identify issues."""
+        issues = []
+        
+        if quality_metrics["completeness_pct"] < 95:
+            issues.append(f"Low completeness: {quality_metrics['completeness_pct']:.1f}%")
+        
+        if quality_metrics["freshness_hours"] > 25:
+            issues.append(f"Stale data: {quality_metrics['freshness_hours']:.1f} hours old")
+        
+        if quality_metrics["consistency_score"] < 90:
+            issues.append(f"Consistency issues: {quality_metrics['consistency_score']:.1f}/100")
+        
+        if quality_metrics["anomaly_count"] > 5:
+            issues.append(f"High anomaly count: {quality_metrics['anomaly_count']}")
+        
+        return issues
+    
+    def _determine_quality_status(self, symbol: str, issues: List[str], 
+                                 quality_metrics: Dict[str, Any]) -> Tuple[str, str]:
+        """Determine quality status and message based on issues."""
+        if not issues:
+            return "PASS", f"Data quality good for {symbol}"
+        
+        if len(issues) == 1 and "anomaly" in issues[0]:
+            return "WARN", f"Minor issues for {symbol}: {'; '.join(issues)}"
+        
+        if quality_metrics["freshness_hours"] <= 25:
+            status = "WARN"
+        else:
+            status = "FAIL"
+            
+        return status, f"Quality issues for {symbol}: {'; '.join(issues)}"
+    
+    def _create_failed_quality_check(self, symbol: str, error: Exception) -> HealthCheckResult:
+        """Create a failed quality check result."""
+        return HealthCheckResult(
+            check_name=f"Data Quality - {symbol}",
+            status="FAIL",
+            message=f"Quality check failed for {symbol}: {error}",
+            details={"symbol": symbol, "error": str(error)}
+        )
     
     def _generate_system_health_summary(self, results: List[HealthCheckResult]) -> HealthCheckResult:
         """Generate overall system health summary."""
@@ -1776,3 +1900,7 @@ def get_health_trends(days: int = 7) -> Dict[str, Any]:
         Health trends analysis
     """
     return health_monitor.get_health_trends(days)
+
+
+# Backward compatibility alias
+DataValidator = EnhancedDataValidator

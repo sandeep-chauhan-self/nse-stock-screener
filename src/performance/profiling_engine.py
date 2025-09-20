@@ -211,6 +211,9 @@ class PerformanceProfiler:
         self.function_total_times = defaultdict(float)
         self.memory_snapshots = deque(maxlen=100)
         
+        # Initialize numpy random generator with a seed for reproducibility
+        self._rng = np.random.default_rng(seed=42)
+        
         # Monitoring integration
         self.monitoring = get_monitoring_system()
         
@@ -276,7 +279,7 @@ class PerformanceProfiler:
             return wrapper
         return decorator
     
-    def cached_computation(self, cache_key: Optional[str] = None, ttl: Optional[int] = None):
+    def cached_computation(self, cache_key: Optional[str] = None):
         """Decorator for caching expensive computations with performance tracking."""
         def decorator(func):
             @functools.wraps(func)
@@ -312,7 +315,7 @@ class PerformanceProfiler:
     
     def _should_profile(self) -> bool:
         """Determine if profiling should be enabled for this call."""
-        return np.random.random() < self.config.sample_rate
+        return self._rng.random() < self.config.sample_rate
     
     def _get_memory_usage(self) -> float:
         """Get current memory usage in MB."""

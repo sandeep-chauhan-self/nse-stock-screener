@@ -12,6 +12,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# Constants for chart formatting
+LEGEND_LOCATION_UPPER_RIGHT = 'upper right'
+
 # Import our logging and monitoring infrastructure first
 try:
     from .logging_config import setup_logging, get_logger, operation_context
@@ -21,18 +24,27 @@ except ImportError:
     # Fallback for when running as standalone
     def setup_logging(**kwargs): pass
     def get_logger(name): return logging.getLogger(name)
-    def operation_context(name, **kwargs):
+    def operation_context(**kwargs):
         from contextlib import nullcontext
         return nullcontext()
     class MockMonitor:
-        def record_data_fetch(self, *args, **kwargs): pass
-        def record_indicator_computation(self, *args, **kwargs): pass
-        def record_scoring(self, *args, **kwargs): pass
-        def complete_symbol_analysis(self, *args, **kwargs): pass
+        def record_data_fetch(self, *args, **kwargs): 
+            # Mock implementation for monitoring data fetch operations
+            pass
+        def record_indicator_computation(self, *args, **kwargs): 
+            # Mock implementation for monitoring indicator calculations
+            pass
+        def record_scoring(self, *args, **kwargs): 
+            # Mock implementation for monitoring scoring operations
+            pass
+        def complete_symbol_analysis(self, *args, **kwargs): 
+            # Mock implementation for monitoring symbol analysis completion
+            pass
     monitor = MockMonitor()
-    def start_batch_analysis(symbols): return "mock_session"
+    def start_batch_analysis(): return "mock_session"
     def end_batch_analysis(): return {}
-    def track_symbol_analysis(symbol):
+    def track_symbol_analysis():
+        from contextlib import nullcontext
         return nullcontext()
     def fetch_stock_data(symbol, **kwargs):
         import yfinance as yf
@@ -406,7 +418,7 @@ class EnhancedEarlyWarningSystem:
             ax2.fill_between(data.index, 30, 70, alpha=0.1, color='yellow')
             ax2.set_ylabel('RSI', fontsize=10)
             ax2.set_ylim(0, 100)
-            ax2.legend(loc='upper right', fontsize=8)
+            ax2.legend(loc=LEGEND_LOCATION_UPPER_RIGHT, fontsize=8)
             ax2.grid(True, alpha=0.3)
             
             # MACD subplot
@@ -428,7 +440,7 @@ class EnhancedEarlyWarningSystem:
             
             ax3.axhline(y=0, color='black', linestyle='-', alpha=0.5)
             ax3.set_ylabel('MACD', fontsize=10)
-            ax3.legend(loc='upper right', fontsize=8)
+            ax3.legend(loc=LEGEND_LOCATION_UPPER_RIGHT, fontsize=8)
             ax3.grid(True, alpha=0.3)
             
             # Volume analysis subplot
@@ -445,7 +457,7 @@ class EnhancedEarlyWarningSystem:
             ax4.fill_between(data.index, 0, 3, alpha=0.1, color='blue')
             ax4.set_ylabel('Vol Ratio', fontsize=10)
             ax4.set_xlabel('Date', fontsize=10)
-            ax4.legend(loc='upper right', fontsize=8)
+            ax4.legend(loc=LEGEND_LOCATION_UPPER_RIGHT, fontsize=8)
             ax4.grid(True, alpha=0.3)
             
             plt.tight_layout()
