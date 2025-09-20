@@ -11,11 +11,36 @@ import logging
 from functools import lru_cache, wraps
 import time
 
+# Import our logging and monitoring infrastructure
+try:
+    from .logging_config import get_logger, timed_operation, operation_context
+    from .stock_analysis_monitor import monitor
+    from .robust_data_fetcher import fetch_stock_data
+except ImportError:
+    # Fallback for when running as standalone
+    def get_logger(name):
+        return logging.getLogger(name)
+    def timed_operation(name):
+        def decorator(func):
+            return func
+        return decorator
+    def operation_context(name, **kwargs):
+        from contextlib import nullcontext
+        return nullcontext()
+    class MockMonitor:
+        def record_indicator_computation(self, *args, **kwargs): pass
+    monitor = MockMonitor()
+    def fetch_stock_data(symbol, **kwargs):
+        import yfinance as yf
+        return yf.Ticker(symbol).history(**kwargs)
+import time
+
 # Use yfinance for data fetching
 try:
     import yfinance as yf
 except ImportError:
-    print("Warning: yfinance not installed. Run: pip install yfinance")
+    logger = logging.getLogger(__name__)
+    logger.critical("yfinance not installed. Run: pip install yfinance")
     import sys
     sys.exit(1)
 
@@ -537,7 +562,7 @@ class AdvancedIndicator:
             logger.warning(f"Error computing weekly indicators for {symbol}: {e}")
             return {'weekly_rsi_trend': 0, 'weekly_macd_bullish': False, 'weekly_vol_trend': 0}
     
-    @timing_decorator
+    @timed_operation("compute_all_indicators")
     def compute_all_indicators(self, symbol: str, period: str = "6mo") -> Dict[str, Any]:
         """
         Compute all indicators for a given symbol
@@ -546,59 +571,112 @@ class AdvancedIndicator:
         Performance optimized: Includes timing monitoring for batch operations
         Corporate action aware: Uses auto_adjust=True for proper split/dividend handling
         """
-        try:
-            # All symbols should already have the .NS suffix
-            # Fetch data with corporate action adjustments - CRITICAL FIX
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period=period, auto_adjust=True)
+        
+        with operation_context("compute_indicators", symbol=symbol, period=period):
+            start_time = time.time()
             
-            if data is None or len(data) < 50 or data.empty:
-                print(f"Insufficient data for {symbol}")
+            try:
+                # Use our robust data fetcher instead of direct yfinance
+                logger.debug(f"Fetching data for {symbol}", extra={'symbol': symbol, 'period': period})
+                data = fetch_stock_data(symbol, period=period)
+                
+                if data is None or len(data) < 50 or data.empty:
+                    error_msg = f"Insufficient data for {symbol}"
+                    logger.warning(error_msg, extra={
+                        'symbol': symbol, 
+                        'data_length': len(data) if data is not None else 0,
+                        'period': period
+                    })
+                    
+                    # Record monitoring metrics
+                    duration = time.time() - start_time
+                    monitor.record_indicator_computation(symbol, duration, False, "insufficient_data")
+                    return None
+                
+                logger.debug(f"Computing indicators for {symbol}", extra={
+                    'symbol': symbol, 
+                    'data_points': len(data),
+                    'date_range': f"{data.index[0].date()} to {data.index[-1].date()}"
+                })
+                
+                # Compute all indicator groups with individual timing
+                indicator_start = time.time()
+                
+                volume_signals = self.compute_volume_signals(data)
+                momentum_signals = self.compute_momentum_signals(data)
+                trend_signals = self.compute_trend_signals(data)
+                volatility_signals = self.compute_volatility_signals(data)
+                relative_strength = self.compute_relative_strength(data, symbol)
+                volume_profile = self.compute_volume_profile_proxy(data)
+                weekly_confirm = self.compute_weekly_confirmation(symbol)
+                
+                indicator_duration = time.time() - indicator_start
+                
+                # Combine all indicators
+                all_indicators = {
+                    'symbol': symbol,
+                    'current_price': round(data['Close'].iloc[-1], 2),
+                    'price_change_pct': round(((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100, 2),
+                    **volume_signals,
+                    **momentum_signals,
+                    **trend_signals,
+                    **volatility_signals,
+                    **relative_strength,
+                    **volume_profile,
+                    **weekly_confirm
+                }
+                
+                # Log successful completion
+                total_duration = time.time() - start_time
+                logger.info(f"Successfully computed indicators for {symbol}", extra={
+                    'symbol': symbol,
+                    'indicator_count': len(all_indicators),
+                    'data_points': len(data),
+                    'total_duration': total_duration,
+                    'indicator_computation_time': indicator_duration
+                })
+                
+                # Record monitoring metrics
+                monitor.record_indicator_computation(symbol, total_duration, True)
+                
+                return all_indicators
+                
+            except Exception as e:
+                total_duration = time.time() - start_time
+                error_type = type(e).__name__
+                
+                logger.error(f"Error computing indicators for {symbol}: {e}", extra={
+                    'symbol': symbol,
+                    'error_type': error_type,
+                    'duration': total_duration,
+                    'period': period
+                }, exc_info=True)
+                
+                # Record monitoring metrics
+                monitor.record_indicator_computation(symbol, total_duration, False, error_type)
+                
                 return None
-            
-            # Compute all indicator groups
-            volume_signals = self.compute_volume_signals(data)
-            momentum_signals = self.compute_momentum_signals(data)
-            trend_signals = self.compute_trend_signals(data)
-            volatility_signals = self.compute_volatility_signals(data)
-            relative_strength = self.compute_relative_strength(data, symbol)
-            volume_profile = self.compute_volume_profile_proxy(data)
-            weekly_confirm = self.compute_weekly_confirmation(symbol)
-            
-            # Combine all indicators
-            all_indicators = {
-                'symbol': symbol,
-                'current_price': round(data['Close'].iloc[-1], 2),
-                'price_change_pct': round(((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100, 2),
-                **volume_signals,
-                **momentum_signals,
-                **trend_signals,
-                **volatility_signals,
-                **relative_strength,
-                **volume_profile,
-                **weekly_confirm
-            }
-            
-            return all_indicators
-            
-        except Exception as e:
-            logger.error(f"Error computing indicators for {symbol}: {e}")
-            return None
 
 # Example usage and testing
 if __name__ == "__main__":
     # Test the indicators
+    from .logging_config import setup_logging
+    
+    setup_logging(level="INFO", console_output=True)
+    logger = logging.getLogger(__name__)
+    
     indicators_engine = AdvancedIndicator()
     
     # Test with a sample stock
     test_symbol = "RELIANCE.NS"
-    print(f"Testing indicators for {test_symbol}...")
+    logger.info(f"Testing indicators for {test_symbol}", extra={'symbol': test_symbol})
     
     result = indicators_engine.compute_all_indicators(test_symbol)
     
     if result:
-        print(f"\nIndicators for {test_symbol}:")
+        logger.info(f"Successfully computed indicators for {test_symbol}", 
+                   extra={'symbol': test_symbol, 'indicator_count': len(result)})
         for key, value in result.items():
-            print(f"{key}: {value}")
+            logger.debug(f"Indicator {key}: {value}", extra={'symbol': test_symbol, 'indicator': key, 'value': value})
     else:
-        print("Failed to compute indicators")
+        logger.error("Failed to compute indicators", extra={'symbol': test_symbol})

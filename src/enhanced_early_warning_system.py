@@ -11,6 +11,35 @@ import matplotlib.gridspec as gridspec
 from pathlib import Path
 import logging
 
+# Import our logging and monitoring infrastructure first
+try:
+    from .logging_config import setup_logging, get_logger, operation_context
+    from .stock_analysis_monitor import monitor, start_batch_analysis, end_batch_analysis, track_symbol_analysis
+    from .robust_data_fetcher import fetch_stock_data, fetch_multiple_stocks
+except ImportError:
+    # Fallback for when running as standalone
+    def setup_logging(**kwargs): pass
+    def get_logger(name): return logging.getLogger(name)
+    def operation_context(name, **kwargs):
+        from contextlib import nullcontext
+        return nullcontext()
+    class MockMonitor:
+        def record_data_fetch(self, *args, **kwargs): pass
+        def record_indicator_computation(self, *args, **kwargs): pass
+        def record_scoring(self, *args, **kwargs): pass
+        def complete_symbol_analysis(self, *args, **kwargs): pass
+    monitor = MockMonitor()
+    def start_batch_analysis(symbols): return "mock_session"
+    def end_batch_analysis(): return {}
+    def track_symbol_analysis(symbol):
+        from contextlib import nullcontext
+        return nullcontext()
+    def fetch_stock_data(symbol, **kwargs):
+        import yfinance as yf
+        return yf.Ticker(symbol).history(**kwargs)
+    def fetch_multiple_stocks(symbols, **kwargs):
+        return {s: fetch_stock_data(s, **kwargs) for s in symbols}
+
 # Use enhanced data ingestion layer for robust data fetching
 from .data.compat import enhanced_yfinance as yf
 
@@ -85,9 +114,15 @@ class EnhancedEarlyWarningSystem:
             config=self.config
         )
         
-        print(f"✅ Enhanced Early Warning System initialized")
-        print(f"📊 Loaded {len(self.nse_stocks)} stocks for analysis")
-        print(f"🔧 Batch size: {self.batch_size}, Timeout: {self.timeout}s")
+        # Initialize logger
+        self.logger = get_logger(__name__)
+        
+        self.logger.info("Enhanced Early Warning System initialized", extra={
+            'stock_count': len(self.nse_stocks),
+            'batch_size': self.batch_size,
+            'timeout': self.timeout,
+            'portfolio_capital': self.config.portfolio_capital
+        })
     
     def _setup_output_directories(self) -> Dict[str, str]:
         """Setup output directories for reports and charts"""
@@ -186,51 +221,81 @@ class EnhancedEarlyWarningSystem:
             return MarketRegime.SIDEWAYS
             
     def analyze_single_stock(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Analyze a single stock with full indicator suite"""
-        try:
-            print(f"Analyzing {symbol}...")
-            
-            # Get all technical indicators
-            indicators = self.indicators_engine.compute_all_indicators(symbol)
-            
-            if indicators is None:
-                print(f"Failed to compute indicators for {symbol}")
+        """Analyze a single stock with full indicator suite and comprehensive error handling"""
+        
+        with track_symbol_analysis(symbol):
+            try:
+                self.logger.debug(f"Starting analysis for {symbol}", extra={'symbol': symbol})
+                
+                # Get all technical indicators with timing
+                indicator_start = time.time()
+                indicators = self.indicators_engine.compute_all_indicators(symbol)
+                indicator_duration = time.time() - indicator_start
+                
+                if indicators is None:
+                    self.logger.warning(f"Failed to compute indicators for {symbol}", 
+                                      extra={'symbol': symbol, 'duration': indicator_duration})
+                    return None
+                
+                self.logger.debug(f"Computed indicators for {symbol}", extra={
+                    'symbol': symbol,
+                    'indicator_count': len(indicators),
+                    'duration': indicator_duration
+                })
+                
+                # Compute composite score using the centralized enum
+                scoring_start = time.time()
+                scoring_result = self.scorer.compute_composite_score(indicators, self.market_regime)
+                scoring_duration = time.time() - scoring_start
+                
+                if scoring_result is None:
+                    self.logger.warning(f"Failed to compute score for {symbol}", 
+                                      extra={'symbol': symbol, 'duration': scoring_duration})
+                    monitor.record_scoring(symbol, scoring_duration, False)
+                    return None
+                
+                # Record successful scoring
+                composite_score = scoring_result.get('composite_score', 0)
+                monitor.record_scoring(symbol, scoring_duration, True, composite_score)
+                
+                # Check risk management constraints
+                entry_price = indicators.get('current_price', 0)
+                atr = indicators.get('atr', entry_price * 0.02)  # Default 2% if no ATR
+                stop_loss = entry_price - (2.0 * atr)  # 2x ATR stop
+                
+                can_enter, risk_reason, quantity, risk_amount = self.risk_manager.can_enter_position(
+                    symbol, entry_price, stop_loss, composite_score
+                )
+                
+                # Add risk management info to result
+                scoring_result['risk_management'] = {
+                    'can_enter_position': can_enter,
+                    'risk_reason': risk_reason,
+                    'suggested_quantity': quantity,
+                    'risk_amount': round(risk_amount, 2),
+                    'suggested_stop_loss': round(stop_loss, 2),
+                    'risk_reward_ratio': round(abs(entry_price - stop_loss) / (entry_price * 0.025), 2)  # Assume 2.5% TP
+                }
+                
+                self.logger.info(f"Successfully analyzed {symbol}", extra={
+                    'symbol': symbol,
+                    'composite_score': composite_score,
+                    'can_enter_position': can_enter,
+                    'indicator_duration': indicator_duration,
+                    'scoring_duration': scoring_duration
+                })
+                
+                return scoring_result
+                
+            except Exception as e:
+                error_type = type(e).__name__
+                self.logger.error(f"Error analyzing {symbol}: {e}", extra={
+                    'symbol': symbol,
+                    'error_type': error_type,
+                    'market_regime': self.market_regime.value if hasattr(self.market_regime, 'value') else str(self.market_regime)
+                }, exc_info=True)
+                
                 return None
-            
-            # Add debugging info
-            print(f"Market regime: {self.market_regime}, type: {type(self.market_regime)}")
-            
-            # Compute composite score using the centralized enum
-            scoring_result = self.scorer.compute_composite_score(indicators, self.market_regime)
-            
-            if scoring_result is None:
-                print(f"Failed to compute score for {symbol}")
-                return None
-            
-            # Check risk management constraints
-            entry_price = indicators.get('current_price', 0)
-            atr = indicators.get('atr', entry_price * 0.02)  # Default 2% if no ATR
-            stop_loss = entry_price - (2.0 * atr)  # 2x ATR stop
-            
-            can_enter, risk_reason, quantity, risk_amount = self.risk_manager.can_enter_position(
-                symbol, entry_price, stop_loss, scoring_result['composite_score']
-            )
-            
-            # Add risk management info to result
-            scoring_result['risk_management'] = {
-                'can_enter_position': can_enter,
-                'risk_reason': risk_reason,
-                'suggested_quantity': quantity,
-                'risk_amount': round(risk_amount, 2),
-                'suggested_stop_loss': round(stop_loss, 2),
-                'risk_reward_ratio': round(abs(entry_price - stop_loss) / (entry_price * 0.025), 2)  # Assume 2.5% TP
-            }
-            
-            return scoring_result
-            
-        except Exception as e:
-            print(f"Error analyzing {symbol}: {e}")
-            return None
     
     def filter_and_rank_results(self, results: List[Dict[str, Any]]) -> Dict[str, List[Dict]]:
         """Filter and rank results by probability levels"""
