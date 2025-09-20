@@ -1,0 +1,186 @@
+# FS.4 Composite Scoring Configuration
+# Sample configuration demonstrating all features
+
+name: "Advanced_Stock_Scoring_v1.2"
+version: "1.2.0"
+description: "Production-ready scoring configuration with optimized weights and comprehensive rules"
+created_at: "2024-01-15T10:30:00"
+
+# Global scoring parameters
+global_params:
+  max_score: 100.0
+  min_score: 0.0
+  confidence_threshold: 0.7
+  high_probability_threshold: 75.0
+  medium_probability_threshold: 50.0
+
+# Component scoring configurations
+components:
+  - name: "momentum_composite"
+    enabled: true
+    weight: 0.28
+    description: "Composite momentum score using price action and technical indicators"
+    method: "ZSCORE"
+    method_config:
+      mean: 0.0
+      std: 1.5
+      high_threshold: 1.5
+      low_threshold: -1.5
+    required_fields: ["momentum_composite"]
+    
+  - name: "volume_analysis"
+    enabled: true
+    weight: 0.22
+    description: "Volume-based scoring using relative volume and volume trends"
+    method: "THRESHOLD"
+    method_config:
+      thresholds: [1.0, 2.0, 3.0, 5.0]
+      scores: [10, 30, 60, 80, 100]
+    required_fields: ["vol_ratio"]
+    
+  - name: "technical_strength"
+    enabled: true
+    weight: 0.25
+    description: "Technical analysis composite including RSI, MACD, and trend strength"
+    method: "CUSTOM"
+    method_config:
+      formula: "rsi_score * 0.4 + macd_score * 0.6"
+      rsi_oversold: 30
+      rsi_overbought: 70
+      macd_signal_strength: 5.0
+    required_fields: ["rsi", "macd", "macd_signal"]
+    
+  - name: "relative_performance"
+    enabled: true
+    weight: 0.25
+    description: "Performance relative to market and sector benchmarks"
+    method: "PERCENTILE"
+    method_config:
+      percentiles: [20, 40, 60, 80]
+      scores: [20, 40, 60, 80, 100]
+    required_fields: ["rel_strength_20d"]
+
+# Bonus and penalty rules
+bonus_penalty_rules:
+  - name: "breakout_bonus"
+    condition_field: "current_price"
+    operator: "GREATER_THAN"
+    reference_field: "sma_20"
+    threshold: 1.05  # 5% above SMA20
+    bonus_points: 8.0
+    description: "Bonus for price breakout above 20-day SMA"
+    
+  - name: "high_volume_confirmation"
+    condition_field: "vol_ratio"
+    operator: "GREATER_THAN"
+    threshold: 2.5
+    bonus_points: 5.0
+    description: "Volume confirmation bonus for high relative volume"
+    
+  - name: "oversold_opportunity"
+    condition_field: "rsi"
+    operator: "LESS_THAN"
+    threshold: 35
+    bonus_points: 3.0
+    description: "Small bonus for oversold conditions with potential reversal"
+    
+  - name: "weak_momentum_penalty"
+    condition_field: "momentum_composite"
+    operator: "LESS_THAN"
+    threshold: -2.0
+    penalty_points: -10.0
+    description: "Penalty for very weak momentum signals"
+    
+  - name: "low_volume_penalty"
+    condition_field: "vol_ratio"
+    operator: "LESS_THAN"
+    threshold: 0.5
+    penalty_points: -5.0
+    description: "Penalty for abnormally low volume"
+
+# Market regime adjustments
+market_regime_adjustments:
+  - regime_type: "BULL_MARKET"
+    momentum_multiplier: 1.2
+    volume_multiplier: 1.1
+    description: "Enhanced momentum and volume scoring in bull markets"
+    
+  - regime_type: "BEAR_MARKET"
+    momentum_multiplier: 0.8
+    volume_multiplier: 1.0
+    technical_multiplier: 1.15
+    description: "Reduced momentum weight, enhanced technical analysis in bear markets"
+    
+  - regime_type: "SIDEWAYS_MARKET"
+    momentum_multiplier: 0.9
+    technical_multiplier: 1.2
+    relative_performance_multiplier: 1.1
+    description: "Favor technical analysis and relative performance in sideways markets"
+
+# Validation rules
+validation_rules:
+  required_indicators:
+    - "momentum_composite"
+    - "vol_ratio"
+    - "rsi"
+    - "macd"
+    - "macd_signal"
+    - "rel_strength_20d"
+    - "current_price"
+    - "sma_20"
+  
+  optional_indicators:
+    - "adx"
+    - "atr_pct"
+    - "sma_50"
+    - "ema_12"
+    - "ema_26"
+  
+  value_ranges:
+    rsi: [0, 100]
+    vol_ratio: [0, 20]
+    momentum_composite: [-5, 5]
+    current_price: [0.01, 100000]
+
+# Configuration metadata
+metadata:
+  author: "FS.4 Scoring System"
+  purpose: "Production stock scoring with comprehensive technical analysis"
+  optimization_history:
+    last_optimized: "2024-01-15T09:15:00"
+    optimization_method: "bayesian"
+    objective_function: "sharpe_ratio"
+    optimization_score: 1.847
+    total_evaluations: 150
+  
+  performance_metrics:
+    backtest_period: "2023-01-01_to_2023-12-31"
+    sharpe_ratio: 1.847
+    win_rate: 0.672
+    max_drawdown: 0.118
+    total_signals: 1247
+    profitable_signals: 838
+  
+  validation_results:
+    cross_validation_score: 0.741
+    out_of_sample_performance: 0.683
+    stability_metric: 0.912
+    
+# Advanced configuration options
+advanced_options:
+  enable_dynamic_weights: true
+  regime_detection_enabled: true
+  confidence_calibration: true
+  score_normalization: "zscore"
+  outlier_handling: "cap_at_3_std"
+  
+  calibration_params:
+    confidence_bins: 10
+    min_samples_per_bin: 100
+    isotonic_regression: true
+  
+  performance_tracking:
+    enable_detailed_logging: true
+    track_component_contributions: true
+    save_scoring_breakdown: true
+    alert_on_score_degradation: true
