@@ -67,6 +67,23 @@ class SystemConfig:
     correlation_limit: float = 0.7      # Max correlation between positions
     max_sector_positions: int = 3       # Max positions per sector
     
+    # Advanced Risk Controls & Position Sizing
+    max_risk_multiplier: float = 2.0    # Maximum risk multiplier cap
+    min_risk_multiplier: float = 0.25   # Minimum risk multiplier floor
+    risk_multiplier_high_score: float = 1.8   # Multiplier for scores >= 70
+    risk_multiplier_medium_score: float = 1.0 # Multiplier for scores >= 50
+    risk_multiplier_low_score: float = 0.5    # Multiplier for scores < 50
+    min_stop_atr_ratio: float = 0.5     # Minimum stop distance as ratio of ATR
+    max_stop_atr_ratio: float = 4.0     # Maximum stop distance as ratio of ATR
+    kelly_fraction_conservative: float = 0.25 # Conservative Kelly fraction cap
+    volatility_parity_enabled: bool = False  # Enable volatility parity sizing
+    lot_size_enforcement: bool = True   # Enforce NSE lot size constraints
+    min_lot_size: int = 1              # Minimum lot size (shares)
+    default_lot_size: int = 1          # Default lot size for unlisted symbols
+    max_position_concentration: float = 0.05  # Max 5% in single position for high vol
+    liquidity_check_enabled: bool = True     # Enable liquidity-based sizing
+    min_avg_volume_multiple: float = 0.01    # Position size as % of avg volume
+    
     # Performance & Monitoring
     benchmark_symbol: str = "^NSEI"     # NIFTY 50 as benchmark
     performance_lookback_days: int = 252 # 1 year for performance metrics

@@ -11,14 +11,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 # Import centralized configuration
-from .config import SystemConfig, get_config
-
-# Import shared enums from centralized location
 try:
-    from .common.enums import PositionStatus, StopType
+    from .config import SystemConfig, get_config
 except ImportError:
     # Fallback for direct execution
-    from src.common.enums import PositionStatus, StopType
+    from config import SystemConfig, get_config
+
+# Import shared enums from centralized location
+from common.enums import PositionStatus, StopType
 
 @dataclass
 class Position:
@@ -78,50 +78,155 @@ class RiskManager:
         self.drawdown_history: List[Tuple[datetime, float]] = []
         
     def calculate_position_size(self, entry_price: float, stop_loss: float, 
-                               signal_score: int) -> Tuple[int, float]:
+                               signal_score: int, atr: float = None, 
+                               avg_volume: float = None, symbol: str = None) -> Tuple[int, float]:
         """
-        Calculate optimal position size based on:
-        - Volatility (ATR-based stop distance)
-        - Portfolio risk limits
-        - Signal strength
-        - Current exposure
+        Enhanced position sizing with multi-stage safety validation:
+        - Configurable risk multipliers with caps
+        - ATR-based stop distance validation
+        - Lot size enforcement (NSE compliance)
+        - Liquidity-based sizing constraints
+        - Volatility parity option
+        - Kelly criterion integration
         """
-        # Base risk per trade (adjusted by signal strength)
-        base_risk = self.config.risk_per_trade  # Use centralized config
+        # Stage 1: Input validation and safety checks
+        if entry_price <= 0 or stop_loss <= 0:
+            return 0, 0.0
         
-        # Adjust risk based on signal strength
-        if signal_score >= 70:
-            risk_multiplier = 1.5  # High confidence = higher risk
-        elif signal_score >= 50:
-            risk_multiplier = 1.0  # Medium confidence = normal risk
-        else:
-            risk_multiplier = 0.5  # Low confidence = lower risk
-        
-        adjusted_risk = base_risk * risk_multiplier
-        
-        # Maximum dollar risk for this trade
-        max_dollar_risk = self.current_capital * adjusted_risk
-        
-        # Price risk per share
         price_risk_per_share = abs(entry_price - stop_loss)
-        
         if price_risk_per_share <= 0:
             return 0, 0.0
         
-        # Calculate quantity based on risk
+        # Stage 2: ATR-based stop distance validation
+        if atr and atr > 0:
+            stop_distance_atr_ratio = price_risk_per_share / atr
+            if stop_distance_atr_ratio < self.config.min_stop_atr_ratio:
+                # Stop too tight - increase stop distance to minimum ATR ratio
+                price_risk_per_share = atr * self.config.min_stop_atr_ratio
+            elif stop_distance_atr_ratio > self.config.max_stop_atr_ratio:
+                # Stop too wide - reduce to maximum ATR ratio
+                price_risk_per_share = atr * self.config.max_stop_atr_ratio
+        
+        # Stage 3: Configurable risk multiplier with caps
+        risk_multiplier = self._get_capped_risk_multiplier(signal_score)
+        base_risk = self.config.risk_per_trade
+        adjusted_risk = base_risk * risk_multiplier
+        
+        # Stage 4: Dollar risk calculation
+        max_dollar_risk = self.current_capital * adjusted_risk
+        
+        # Stage 5: Base position sizing
         quantity_by_risk = int(max_dollar_risk / price_risk_per_share)
         
-        # Position size limit (max % of portfolio)
+        # Stage 6: Position value limits
         max_position_value = self.current_capital * self.config.max_position_size
         quantity_by_size = int(max_position_value / entry_price)
         
-        # Take the smaller of the two
-        final_quantity = min(quantity_by_risk, quantity_by_size)
+        # Initial quantity (smaller of risk and size limits)
+        base_quantity = min(quantity_by_risk, quantity_by_size)
         
-        # Calculate actual risk amount
+        # Stage 7: Volatility parity adjustment (if enabled)
+        if self.config.volatility_parity_enabled and atr and atr > 0:
+            base_quantity = self._apply_volatility_parity(base_quantity, atr, entry_price)
+        
+        # Stage 8: Liquidity constraints
+        if self.config.liquidity_check_enabled and avg_volume:
+            base_quantity = self._apply_liquidity_constraints(base_quantity, avg_volume)
+        
+        # Stage 9: Lot size enforcement
+        final_quantity = self._enforce_lot_size(base_quantity, symbol)
+        
+        # Stage 10: Final safety checks
+        if final_quantity <= 0:
+            return 0, 0.0
+        
+        # Calculate actual risk with final quantity
         actual_risk = final_quantity * price_risk_per_share
         
         return final_quantity, actual_risk
+    
+    def _get_capped_risk_multiplier(self, signal_score: int) -> float:
+        """Get risk multiplier based on signal score with safety caps"""
+        if signal_score >= 70:
+            multiplier = self.config.risk_multiplier_high_score
+        elif signal_score >= 50:
+            multiplier = self.config.risk_multiplier_medium_score
+        else:
+            multiplier = self.config.risk_multiplier_low_score
+        
+        # Apply safety caps
+        return max(self.config.min_risk_multiplier, 
+                  min(multiplier, self.config.max_risk_multiplier))
+    
+    def _apply_volatility_parity(self, quantity: int, atr: float, price: float) -> int:
+        """Apply volatility parity to normalize risk across different volatility stocks"""
+        if atr <= 0 or price <= 0:
+            return quantity
+        
+        # Calculate volatility as percentage of price
+        volatility_pct = atr / price
+        
+        # Base volatility for normalization (2% daily move)
+        base_volatility = 0.02
+        
+        # Adjust quantity inversely to volatility
+        volatility_adjustment = base_volatility / volatility_pct
+        adjusted_quantity = int(quantity * volatility_adjustment)
+        
+        return max(1, adjusted_quantity)
+    
+    def _apply_liquidity_constraints(self, quantity: int, avg_volume: float) -> int:
+        """Constrain position size based on average daily volume"""
+        if avg_volume <= 0:
+            return quantity
+        
+        # Maximum position as percentage of average volume
+        max_volume_position = int(avg_volume * self.config.min_avg_volume_multiple)
+        
+        return min(quantity, max_volume_position)
+    
+    def _enforce_lot_size(self, quantity: int, symbol: str = None) -> int:
+        """Enforce NSE lot size constraints"""
+        if not self.config.lot_size_enforcement:
+            return quantity
+        
+        # For NSE stocks, use lot size (simplified - would need actual lot size data)
+        lot_size = self._get_lot_size(symbol)
+        
+        if lot_size <= 1:
+            return quantity
+        
+        # Round down to nearest lot size
+        return (quantity // lot_size) * lot_size
+    
+    def _get_lot_size(self, symbol: str = None) -> int:
+        """Get lot size for symbol (simplified implementation)"""
+        if not symbol:
+            return self.config.default_lot_size
+        
+        # In real implementation, this would lookup actual NSE lot sizes
+        # For now, return default
+        return self.config.default_lot_size
+    
+    def calculate_kelly_position(self, win_probability: float, avg_win: float, 
+                               avg_loss: float, capital: float) -> float:
+        """Calculate Kelly criterion position size"""
+        if avg_loss <= 0 or win_probability <= 0:
+            return 0.0
+        
+        # Kelly formula: f = (bp - q) / b
+        # where b = odds received (avg_win/avg_loss), p = win_probability, q = 1-p
+        b = avg_win / avg_loss
+        p = win_probability
+        q = 1 - p
+        
+        kelly_fraction = (b * p - q) / b
+        
+        # Apply conservative cap
+        kelly_fraction = min(kelly_fraction, self.config.kelly_fraction_conservative)
+        kelly_fraction = max(kelly_fraction, 0.0)  # No negative sizing
+        
+        return capital * kelly_fraction
     
     def calculate_stops_and_targets(self, entry_price: float, atr: float, 
                                    signal_data: Dict[str, Any]) -> Tuple[float, float]:
