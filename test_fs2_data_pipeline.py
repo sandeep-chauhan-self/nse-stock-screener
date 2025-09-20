@@ -18,9 +18,9 @@ import pandas as pd
 import numpy as np
 from unittest.mock import Mock, patch
 
-from src.data.pipeline import DataPipeline, DataPipelineManager, DataSource, DatasetMetadata
+from src.data.data_pipeline import DataPipeline, DataPipelineManager, DataSource, DatasetMetadata
 from src.data.corporate_actions import CorporateActionsManager, CorporateAction
-from src.data.validation import DataPipelineHealthChecker
+from src.data.validation import DataHealthMonitor as DataPipelineHealthChecker
 from src.common.interfaces import StockData
 
 
