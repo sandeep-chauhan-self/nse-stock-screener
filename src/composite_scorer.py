@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from .common.enums import MarketRegime, ProbabilityLevel
+from .common.interfaces import IScorer, ScoreResult
 from .common.volume_thresholds import VolumeThresholdCalculator, DEFAULT_VOLUME_CONFIG
 
 # Data validation imports

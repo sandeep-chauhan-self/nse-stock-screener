@@ -21,6 +21,9 @@ try:
         DataContract, DataValidator, safe_float, safe_bool, 
         is_valid_numeric, replace_invalid_with_nan
     )
+    # Import new modular interfaces
+    from .common.interfaces import IIndicator, IndicatorResult
+    from .indicators import IndicatorEngine
 except ImportError:
     # Fallback for when running as standalone
     def get_logger(name):

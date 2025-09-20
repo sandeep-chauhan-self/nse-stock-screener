@@ -18,12 +18,14 @@ logger = logging.getLogger(__name__)
 # Import centralized configuration
 try:
     from .config import SystemConfig, get_config
+    from .common.config import ConfigManager
 except ImportError:
     # Fallback for direct execution
     from config import SystemConfig, get_config
 
-# Import shared enums from centralized location
-from common.enums import PositionStatus, StopType
+# Import shared enums and interfaces from centralized location
+from .common.enums import PositionStatus, StopType
+from .common.interfaces import IRiskManager, RiskAssessment
 
 @dataclass
 class Position:

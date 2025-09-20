@@ -17,6 +17,8 @@ import yfinance as yf
 # Import centralized configuration
 try:
     from .config import SystemConfig, get_config
+    from .common.config import ConfigManager
+    from .common.interfaces import IBacktester, BacktestResult
 except ImportError:
     # Fallback for direct execution
     from config import SystemConfig, get_config

@@ -42,6 +42,8 @@ except ImportError:
 
 # Use enhanced data ingestion layer for robust data fetching
 from .data.compat import enhanced_yfinance as yf
+# Use new modular data fetchers
+from .data import YahooDataFetcher, DataFetcherFactory
 
 # Add the current directory to Python path for imports
 current_dir = Path(__file__).parent
@@ -53,12 +55,16 @@ from .common.paths import PathManager, get_data_path, get_output_path, ensure_di
 # Import shared enums from centralized location
 try:
     from .common.enums import MarketRegime
+    from .common.interfaces import IDataFetcher, IIndicator, IScorer
 except ImportError:
     # Fallback for direct execution
     from src.common.enums import MarketRegime
+    from src.common.interfaces import IDataFetcher, IIndicator, IScorer
 
 # Import our enhanced modules
 from advanced_indicators import AdvancedIndicator
+# Use new modular indicators
+from .indicators import IndicatorEngine
 # We'll import CompositeScorer at runtime to avoid circular import issues
 # from composite_scorer import CompositeScorer
 from advanced_backtester import AdvancedBacktester
@@ -66,6 +72,7 @@ from risk_manager import RiskManager
 
 # Import centralized configuration
 from .config import SystemConfig, get_config
+from .common.config import ConfigManager
 
 # Set up logging
 logger = logging.getLogger(__name__)
