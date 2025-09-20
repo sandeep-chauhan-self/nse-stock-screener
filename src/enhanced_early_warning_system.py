@@ -1,9 +1,3 @@
-"""
-Enhanced Early Warning System for Stock Analysis
-Advanced version with comprehensive technical indicators, composite scoring,
-risk management, and backtesting capabilities.
-"""
-
 import os
 import sys
 import time
@@ -15,10 +9,14 @@ import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from pathlib import Path
 
 # Add the current directory to Python path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
+
+# Import path utilities for cross-platform compatibility
+from .common.paths import PathManager, get_data_path, get_output_path, ensure_dir
 
 # Import shared enums from centralized location
 from common.enums import MarketRegime

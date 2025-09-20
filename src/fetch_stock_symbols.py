@@ -1,19 +1,32 @@
 """
 Stock Symbol Fetcher - Downloads real stock symbols from various exchanges
 and saves them to a text file for use with the Early Warning System.
+
+Cross-platform compatible with proper path handling and command-line options.
 """
 
 import os
+import sys
 import requests
 import pandas as pd
 import time
 import random
+import argparse
 from bs4 import BeautifulSoup
 import yfinance as yf
+from pathlib import Path
 
-# File to save the stock symbols
-OUTPUT_FILE = "..\\data\\sample_stocks.txt"
-TEMP_DIR = "..\\data\\temp"
+# Import path utilities for cross-platform compatibility
+from .common.paths import (
+    PathManager, add_output_argument, resolve_output_path,
+    get_data_path, get_temp_path, ensure_dir
+)
+
+# Initialize path manager
+pm = PathManager()
+
+# Default output file (can be overridden via command line)
+DEFAULT_OUTPUT_FILE = "sample_stocks.txt"
 
 def fetch_nse_stocks():
     """Fetch NSE (India) stock symbols"""
@@ -21,7 +34,7 @@ def fetch_nse_stocks():
     
     try:
         # Create temp directory if it doesn't exist
-        os.makedirs(TEMP_DIR, exist_ok=True)
+        temp_dir = pm.ensure_temp_dir()
         
         # NSE list from NSE India website
         url = "https://www1.nseindia.com/content/indices/ind_nifty500list.csv"
@@ -44,16 +57,15 @@ def fetch_nse_stocks():
                 raise Exception(f"Failed with status code: {response.status_code}")
                 
             # Save the CSV temporarily
-            temp_file = os.path.join(TEMP_DIR, "nse_temp.csv")
-            with open(temp_file, "wb") as f:
-                f.write(response.content)
+            temp_file = pm.get_temp_path("nse_temp.csv")
+            temp_file.write_bytes(response.content)
             
             # Read the CSV
             df = pd.read_csv(temp_file)
             symbols = df["Symbol"].tolist()
             
             # Clean up
-            os.remove(temp_file)
+            temp_file.unlink()
             
             # Add .NS suffix for Yahoo Finance
             symbols = [f"{symbol}.NS" for symbol in symbols]
@@ -69,16 +81,15 @@ def fetch_nse_stocks():
             
             if response.status_code == 200:
                 # Save the CSV temporarily
-                temp_file = os.path.join(TEMP_DIR, "nse_temp.csv")
-                with open(temp_file, "wb") as f:
-                    f.write(response.content)
+                temp_file = pm.get_temp_path("nse_temp.csv")
+                temp_file.write_bytes(response.content)
                 
                 # Read the CSV
                 df = pd.read_csv(temp_file)
                 symbols = df["Symbol"].tolist()
                 
                 # Clean up
-                os.remove(temp_file)
+                temp_file.unlink()
                 
                 # Add .NS suffix for Yahoo Finance
                 symbols = [f"{symbol}.NS" for symbol in symbols]
@@ -155,19 +166,18 @@ def fetch_us_stocks():
                 
                 if response.status_code == 200:
                     # Create temp directory if it doesn't exist
-                    os.makedirs(TEMP_DIR, exist_ok=True)
+                    temp_dir = pm.ensure_temp_dir()
                     
                     # Save the CSV temporarily
-                    temp_file = os.path.join(TEMP_DIR, "sp500_temp.csv")
-                    with open(temp_file, "wb") as f:
-                        f.write(response.content)
+                    temp_file = pm.get_temp_path("sp500_temp.csv")
+                    temp_file.write_bytes(response.content)
                     
                     # Read the CSV
                     df = pd.read_csv(temp_file)
                     symbols = df["Symbol"].tolist()
                     
                     # Clean up
-                    os.remove(temp_file)
+                    temp_file.unlink()
                     
                     return symbols
                 else:
@@ -463,10 +473,10 @@ def validate_symbols(symbols, max_to_check=100):
     # Return both the validated subset and the full list
     return valid_symbols, symbols
 
-def save_symbols(symbols, filename=OUTPUT_FILE, limit=1000):
+def save_symbols(symbols, output_path: Path, limit=1000):
     """Save symbols to a text file"""
-    # Ensure data directory exists
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    # Ensure parent directory exists
+    ensure_dir(output_path.parent)
     
     # Limit the number of symbols if necessary
     if len(symbols) > limit:
@@ -474,32 +484,154 @@ def save_symbols(symbols, filename=OUTPUT_FILE, limit=1000):
         random.shuffle(symbols)
         symbols = symbols[:limit]
     
-    print(f"Saving {len(symbols)} symbols to {filename}")
+    print(f"Saving {len(symbols)} symbols to {output_path}")
     
-    with open(filename, 'w') as f:
-        for symbol in symbols:
-            f.write(f"{symbol}\n")
+    # Write symbols to file
+    output_path.write_text('\n'.join(symbols) + '\n')
     
-    print(f"Successfully saved {len(symbols)} stock symbols to {filename}")
+    print(f"Successfully saved {len(symbols)} stock symbols to {output_path}")
 
 def main():
     """Main function to fetch and save stock symbols"""
-    # Import os here to ensure it's available in this scope
-    import os
+    # Set up argument parsing
+    parser = argparse.ArgumentParser(
+        description="Fetch stock symbols from various exchanges and save to file",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s --output my_symbols.txt --limit 500
+  %(prog)s --market nse --limit 100
+  %(prog)s --market all --output /path/to/output.txt
+        """
+    )
+    
+    # Add arguments
+    add_output_argument(parser, DEFAULT_OUTPUT_FILE, "Output file for stock symbols")
+    
+    parser.add_argument(
+        '--market', '-m',
+        choices=['nse', 'us', 'ftse', 'all'],
+        default='nse',
+        help='Market to fetch symbols from (default: nse)'
+    )
+    
+    parser.add_argument(
+        '--limit', '-l',
+        type=int,
+        default=1000,
+        help='Maximum number of symbols to save (default: 1000)'
+    )
+    
+    parser.add_argument(
+        '--interactive', '-i',
+        action='store_true',
+        help='Run in interactive mode with menu selection'
+    )
+    
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Resolve output path
+    output_path = resolve_output_path(args.output, DEFAULT_OUTPUT_FILE, 'data')
     
     print("=" * 50)
     print("STOCK SYMBOL FETCHER")
     print("=" * 50)
     print("This script will fetch real stock symbols from various exchanges")
     print("and save them to a file for use with the Early Warning System.")
+    print(f"Output will be saved to: {output_path}")
     print("=" * 50)
     print()
     
-    # Create necessary directories
-    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
-    os.makedirs(TEMP_DIR, exist_ok=True)
+    # Ensure directories exist
+    pm.ensure_data_dir()
+    pm.ensure_temp_dir()
     
-    # Ask user for preferences
+    all_symbols = []
+    
+    if args.interactive:
+        # Interactive mode - show menu
+        all_symbols = run_interactive_mode()
+        if not all_symbols:  # User chose to exit or go back
+            return
+    else:
+        # Command-line mode - use specified market
+        if args.market == 'nse':
+            print("Fetching NSE (India) symbols...")
+            nse_symbols = fetch_nse_stocks()
+            if nse_symbols:
+                all_symbols.extend(nse_symbols)
+                
+        elif args.market == 'us':
+            print("Fetching US market symbols...")
+            us_symbols = fetch_us_stocks()
+            if us_symbols:
+                all_symbols.extend(us_symbols)
+                
+        elif args.market == 'ftse':
+            print("Fetching FTSE 100 symbols...")
+            ftse_symbols = fetch_ftse_100()
+            if ftse_symbols:
+                all_symbols.extend(ftse_symbols)
+                
+        elif args.market == 'all':
+            print("Fetching symbols from all available markets...")
+            for fetch_func, name in [
+                (fetch_nse_stocks, "NSE"),
+                (fetch_us_stocks, "US Markets"),
+                (fetch_ftse_100, "FTSE 100")
+            ]:
+                try:
+                    print(f"\nFetching {name} symbols...")
+                    symbols = fetch_func()
+                    if symbols:
+                        all_symbols.extend(symbols)
+                        print(f"✓ Added {len(symbols)} {name} symbols")
+                    else:
+                        print(f"✗ No {name} symbols fetched")
+                except Exception as e:
+                    print(f"✗ Failed to fetch {name} symbols: {e}")
+    
+    # Check if we got any symbols
+    if not all_symbols:
+        print("❌ No symbols were fetched. Please check your internet connection and try again.")
+        return
+    
+    print(f"\n📊 Total symbols fetched: {len(all_symbols)}")
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_symbols = []
+    for symbol in all_symbols:
+        if symbol not in seen:
+            seen.add(symbol)
+            unique_symbols.append(symbol)
+    
+    if len(unique_symbols) != len(all_symbols):
+        print(f"🔄 Removed {len(all_symbols) - len(unique_symbols)} duplicate symbols")
+        all_symbols = unique_symbols
+    
+    # Validate symbol limit
+    if len(all_symbols) > args.limit:
+        print(f"⚠️  You have {len(all_symbols)} symbols but requested limit of {args.limit}")
+        if not args.interactive:
+            print(f"🎲 Randomly selecting {args.limit} symbols from {len(all_symbols)} available")
+        else:
+            proceed = input("Proceed anyway? (y/n): ").lower() == 'y'
+            if not proceed:
+                print("Exiting without saving.")
+                return
+    
+    # Save to file
+    save_symbols(all_symbols, output_path, args.limit)
+    
+    print("\n✅ Done! You can now use these symbols with the Early Warning System.")
+    print(f"📁 File saved to: {output_path}")
+    print(f"🗂️  Absolute path: {output_path.resolve()}")
+
+
+def run_interactive_mode():
+    """Run interactive mode with menu selection"""
     print("Which markets would you like to include?")
     print("1. NSE (India)")
     print("2. US Markets (S&P 500, Dow Jones, NASDAQ-100)")
@@ -520,15 +652,29 @@ def main():
     all_symbols = []
     
     if choice == '1' or choice == '4':
-        all_symbols.extend(fetch_nse_stocks())
+        print("Fetching NSE symbols...")
+        nse_symbols = fetch_nse_stocks()
+        if nse_symbols:
+            all_symbols.extend(nse_symbols)
     
     if choice == '2' or choice == '4':
-        all_symbols.extend(fetch_us_stocks())
-        all_symbols.extend(fetch_dow_jones())
-        all_symbols.extend(fetch_nasdaq_100())
+        print("Fetching US market symbols...")
+        us_symbols = fetch_us_stocks()
+        dow_symbols = fetch_dow_jones()
+        nasdaq_symbols = fetch_nasdaq_100()
+        
+        if us_symbols:
+            all_symbols.extend(us_symbols)
+        if dow_symbols:
+            all_symbols.extend(dow_symbols)
+        if nasdaq_symbols:
+            all_symbols.extend(nasdaq_symbols)
     
     if choice == '3' or choice == '4':
-        all_symbols.extend(fetch_ftse_100())
+        print("Fetching FTSE 100 symbols...")
+        ftse_symbols = fetch_ftse_100()
+        if ftse_symbols:
+            all_symbols.extend(ftse_symbols)
     
     if choice == '5':
         print("\nCustom selection:")
@@ -539,66 +685,39 @@ def main():
         include_ftse = input("Include FTSE 100 (UK)? (y/n): ").lower() == 'y'
         
         if include_nse:
-            all_symbols.extend(fetch_nse_stocks())
+            nse_symbols = fetch_nse_stocks()
+            if nse_symbols:
+                all_symbols.extend(nse_symbols)
         if include_sp500:
-            all_symbols.extend(fetch_us_stocks())
+            us_symbols = fetch_us_stocks()
+            if us_symbols:
+                all_symbols.extend(us_symbols)
         if include_dow:
-            all_symbols.extend(fetch_dow_jones())
+            dow_symbols = fetch_dow_jones()
+            if dow_symbols:
+                all_symbols.extend(dow_symbols)
         if include_nasdaq:
-            all_symbols.extend(fetch_nasdaq_100())
+            nasdaq_symbols = fetch_nasdaq_100()
+            if nasdaq_symbols:
+                all_symbols.extend(nasdaq_symbols)
         if include_ftse:
-            all_symbols.extend(fetch_ftse_100())
+            ftse_symbols = fetch_ftse_100()
+            if ftse_symbols:
+                all_symbols.extend(ftse_symbols)
     
-    print(f"\nFound {len(all_symbols)} symbols total")
-    
-    # If no symbols were found, inform the user
-    if len(all_symbols) == 0:
-        print("\n⚠️ No stock symbols could be fetched from online sources.")
-        print("This is likely due to connection issues or website restrictions.")
-        print("Try again later or select option 2 in the main menu to generate simulated stock symbols.")
-        return
-    
-    # Remove duplicates
-    all_symbols = list(set(all_symbols))
-    print(f"After removing duplicates: {len(all_symbols)} unique symbols")
-    
-    # Validate a subset of symbols
-    print("\nWould you like to validate symbols with Yahoo Finance?")
-    print("This helps ensure the symbols are valid but takes longer.")
-    validate = input("Validate symbols? (y/n): ").lower() == 'y'
-    
-    if validate:
-        max_to_check = int(input("How many symbols to check (10-100, default 20): ") or "20")
-        valid_subset, all_symbols = validate_symbols(all_symbols, max_to_check)
-        
-        if len(valid_subset) < max_to_check * 0.5 and max_to_check >= 10:
-            print("\nWARNING: Many symbols failed validation.")
-            proceed = input("Proceed anyway? (y/n): ").lower() == 'y'
-            if not proceed:
-                print("Exiting without saving.")
-                return
-    
-    # Ask for limit
-    print("\nHow many symbols would you like to save?")
-    limit = int(input(f"Enter number (1-{len(all_symbols)}, default 1000): ") or "1000")
-    
-    # Save to file
-    save_symbols(all_symbols, OUTPUT_FILE, limit)
-    
-    print("\nDone! You can now use these symbols with the Early Warning System.")
-    print(f"File saved to: {OUTPUT_FILE}")
-    
-    # Convert relative path to absolute for display
-    abs_path = os.path.abspath(OUTPUT_FILE)
-    print(f"Absolute path: {abs_path}")
+    return all_symbols
+
 
 if __name__ == "__main__":
-    import os  # Import os here for absolute path in error handling
     try:
         main()
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
     except Exception as e:
         print(f"\nAn error occurred: {e}")
+        import traceback
+        traceback.print_exc()
     
-    input("\nPress Enter to exit...")
+    # Only prompt for input in interactive mode
+    if len(sys.argv) == 1:  # No command line arguments provided
+        input("\nPress Enter to exit...")
