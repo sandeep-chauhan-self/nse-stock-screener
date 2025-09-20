@@ -22,7 +22,7 @@ if %ERRORLEVEL% neq 0 (
 echo Checking dependencies...
 
 :: Use the fixed dependency check script
-python check_deps.py
+python ..\src\check_deps.py
 if %ERRORLEVEL% neq 0 (
     echo Installing missing dependencies...
     pip install yfinance pandas numpy matplotlib requests beautifulsoup4
