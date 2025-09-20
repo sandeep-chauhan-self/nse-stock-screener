@@ -10,7 +10,6 @@ import time
 import argparse
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
-from enum import Enum
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -21,19 +20,15 @@ import matplotlib.gridspec as gridspec
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
+# Import shared enums from centralized location
+from common.enums import MarketRegime
+
 # Import our enhanced modules
 from advanced_indicators import AdvancedIndicator
 # We'll import CompositeScorer at runtime to avoid circular import issues
 # from composite_scorer import CompositeScorer
 from advanced_backtester import AdvancedBacktester, BacktestConfig
 from risk_manager import RiskManager, RiskConfig
-
-class MarketRegime(Enum):
-    """Market regime classification"""
-    BULLISH = "bullish"
-    BEARISH = "bearish"
-    SIDEWAYS = "sideways"
-    HIGH_VOLATILITY = "high_volatility"
 
 class EnhancedEarlyWarningSystem:
     """Enhanced Early Warning System with advanced technical analysis"""
@@ -192,16 +187,9 @@ class EnhancedEarlyWarningSystem:
             
             # Add debugging info
             print(f"Market regime: {self.market_regime}, type: {type(self.market_regime)}")
-            print(f"Market regime from composite_scorer module: {type(self.scorer.regime_adjustments).__name__}")
             
-            # Ensure the market regime is of the correct type for CompositeScorer
-            # This handles the case when types don't match despite having the same values
-            from composite_scorer import MarketRegime as CSMarketRegime
-            regime_name = self.market_regime.name
-            cs_regime = CSMarketRegime[regime_name]
-            
-            # Compute composite score
-            scoring_result = self.scorer.compute_composite_score(indicators, cs_regime)
+            # Compute composite score using the centralized enum
+            scoring_result = self.scorer.compute_composite_score(indicators, self.market_regime)
             
             if scoring_result is None:
                 print(f"Failed to compute score for {symbol}")

@@ -9,17 +9,9 @@ import pandas as pd
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
 
-class PositionStatus(Enum):
-    OPEN = "open"
-    CLOSED = "closed"
-    PENDING = "pending"
-
-class StopType(Enum):
-    INITIAL = "initial"
-    BREAKEVEN = "breakeven"
-    TRAILING = "trailing"
+# Import shared enums from centralized location
+from common.enums import PositionStatus, StopType
 
 @dataclass
 class Position:

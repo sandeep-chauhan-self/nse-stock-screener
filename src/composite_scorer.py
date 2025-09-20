@@ -6,25 +6,9 @@ Implements the probabilistic scoring framework (0-100) with weighted components
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Tuple, Optional
-from enum import Enum
 
-# Import market regime from enhanced_early_warning_system to ensure consistency
-# This avoids the "Error analyzing RELIANCE.NS: <MarketRegime.BULLISH: 'bullish'>" issue
-from enum import Enum
-
-# Define the same enum for the same constants, but avoid circular imports
-# We'll make sure the values match those in enhanced_early_warning_system.py
-class MarketRegime(Enum):
-    """Market regime classification"""
-    BULLISH = "bullish"
-    BEARISH = "bearish"
-    SIDEWAYS = "sideways"
-    HIGH_VOLATILITY = "high_volatility"
-
-class ProbabilityLevel(Enum):
-    HIGH = "HIGH"
-    MEDIUM = "MEDIUM"
-    LOW = "LOW"
+# Import shared enums from centralized location
+from common.enums import MarketRegime, ProbabilityLevel
 
 class CompositeScorer:
     """
