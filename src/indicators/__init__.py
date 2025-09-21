@@ -12,7 +12,7 @@ from .technical import RSIIndicator, ATRIndicator, MACDIndicator, IndicatorEngin
 
 __all__ = [
     'RSIIndicator',
-    'ATRIndicator', 
+    'ATRIndicator',
     'MACDIndicator',
     'IndicatorEngine'
 ]

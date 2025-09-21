@@ -95,19 +95,19 @@ class IndicatorConfig:
 class IndicatorRegistry:
     """
     Registry for managing indicator types and configurations.
-    
+
     Supports dynamic indicator creation from configuration files
     and runtime registration of new indicator types.
     """
-    
+
     def __init__(self):
         self._indicator_types: Dict[str, Type[BaseIndicator]] = {}
         self._factory_functions: Dict[str, callable] = {}
         self._configurations: Dict[str, IndicatorConfig] = {}
-        
+
         # Register built-in indicators
         self._register_builtin_indicators()
-        
+
     def _register_builtin_indicators(self) -> None:
         """Register built-in indicator types and factory functions."""
         # Register indicator classes
@@ -117,7 +117,7 @@ class IndicatorRegistry:
         self.register_indicator_type("BollingerBands", BollingerBandsIndicator)
         self.register_indicator_type("ADX", ADXIndicator)
         self.register_indicator_type("VolumeProfile", VolumeProfileIndicator)
-        
+
         # Register factory functions
         self.register_factory("RSI", RSI)
         self.register_factory("MACD", MACD)
@@ -125,7 +125,7 @@ class IndicatorRegistry:
         self.register_factory("BollingerBands", BollingerBands)
         self.register_factory("ADX", ADX)
         self.register_factory("VolumeProfile", VolumeProfile)
-        
+
         # Register common variants
         self.register_factory("RSI_Short", RSI_Short)
         self.register_factory("RSI_Long", RSI_Long)
@@ -133,26 +133,26 @@ class IndicatorRegistry:
         self.register_factory("MACD_Slow", MACD_Slow)
         self.register_factory("ATR_Short", ATR_Short)
         self.register_factory("ATR_Long", ATR_Long)
-    
+
     def register_indicator_type(self, name: str, indicator_class: Type[BaseIndicator]) -> None:
         """Register a new indicator type."""
         self._indicator_types[name] = indicator_class
-    
+
     def register_factory(self, name: str, factory_func: callable) -> None:
         """Register a factory function."""
         self._factory_functions[name] = factory_func
-    
+
     def register_configuration(self, config: IndicatorConfig) -> None:
         """Register an indicator configuration."""
         self._configurations[config.name] = config
-    
+
     def load_configurations_from_file(self, file_path: Union[str, Path]) -> None:
         """Load indicator configurations from YAML or JSON file."""
         file_path = Path(file_path)
-        
+
         if not file_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {file_path}")
-        
+
         with open(file_path, 'r', encoding='utf-8') as f:
             if file_path.suffix.lower() in ['.yaml', '.yml']:
                 data = yaml.safe_load(f)
@@ -160,7 +160,7 @@ class IndicatorRegistry:
                 data = json.load(f)
             else:
                 raise ValueError(f"Unsupported file format: {file_path.suffix}")
-        
+
         # Parse configurations
         if 'indicators' in data:
             for indicator_data in data['indicators']:
@@ -172,15 +172,15 @@ class IndicatorRegistry:
                     priority=indicator_data.get('priority', 100)
                 )
                 self.register_configuration(config)
-    
+
     def create_indicator(self, name: str, **override_params) -> BaseIndicator:
         """
         Create an indicator instance by name.
-        
+
         Args:
             name: Indicator name (type or factory function name)
             **override_params: Parameters to override configuration
-            
+
         Returns:
             Configured indicator instance
         """
@@ -189,49 +189,49 @@ class IndicatorRegistry:
             config = self._configurations[name]
             if not config.enabled:
                 raise ValueError(f"Indicator '{name}' is disabled in configuration")
-            
+
             # Merge configuration parameters with overrides
             params = {**config.parameters, **override_params}
-            
+
             # Use factory function if available
             if config.indicator_type in self._factory_functions:
                 return self._factory_functions[config.indicator_type](**params)
-            
+
             # Use indicator class directly
             if config.indicator_type in self._indicator_types:
                 return self._indicator_types[config.indicator_type](**params)
-            
+
             raise ValueError(f"Unknown indicator type: {config.indicator_type}")
-        
+
         # Check if it's a direct factory function
         if name in self._factory_functions:
             return self._factory_functions[name](**override_params)
-        
+
         # Check if it's a direct indicator type
         if name in self._indicator_types:
             return self._indicator_types[name](**override_params)
-        
+
         raise ValueError(f"Unknown indicator: {name}")
-    
+
     def create_indicator_set(self, config_name: str = "default") -> Dict[str, BaseIndicator]:
         """
         Create a set of indicators based on configuration.
-        
+
         Args:
             config_name: Name of configuration set to use
-            
+
         Returns:
             Dictionary mapping indicator names to instances
         """
         indicators = {}
-        
+
         # Get enabled configurations sorted by priority
         enabled_configs = [
             config for config in self._configurations.values()
             if config.enabled
         ]
         enabled_configs.sort(key=lambda x: x.priority)
-        
+
         for config in enabled_configs:
             try:
                 indicator = self.create_indicator(config.name)
@@ -239,9 +239,9 @@ class IndicatorRegistry:
             except Exception as e:
                 print(f"Warning: Failed to create indicator '{config.name}': {e}")
                 continue
-        
+
         return indicators
-    
+
     def list_available_indicators(self) -> List[str]:
         """Get list of all available indicators."""
         available = set()
@@ -249,11 +249,11 @@ class IndicatorRegistry:
         available.update(self._factory_functions.keys())
         available.update(self._configurations.keys())
         return sorted(list(available))
-    
+
     def get_indicator_info(self, name: str) -> Dict[str, Any]:
         """Get information about an indicator."""
         info = {"name": name, "available": False}
-        
+
         if name in self._configurations:
             config = self._configurations[name]
             info.update({
@@ -274,7 +274,7 @@ class IndicatorRegistry:
                 "available": True,
                 "type": "indicator_class"
             })
-        
+
         return info
 
 

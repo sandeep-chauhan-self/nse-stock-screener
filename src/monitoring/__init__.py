@@ -10,10 +10,10 @@ Components:
 
 Usage:
     from src.monitoring import initialize_monitoring, get_monitoring_system
-    
+
     # Initialize monitoring
     monitoring = initialize_monitoring()
-    
+
     # Use monitoring decorators
     @monitoring.metrics.timer("operation_name")
     def my_operation():
@@ -26,7 +26,7 @@ from .grafana_config import GrafanaProvisioner, GrafanaConfig
 
 __all__ = [
     'initialize_monitoring',
-    'get_monitoring_system', 
+    'get_monitoring_system',
     'monitored_operation',
     'GrafanaProvisioner',
     'GrafanaConfig'

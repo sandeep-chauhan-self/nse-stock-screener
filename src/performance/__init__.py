@@ -12,10 +12,10 @@ Components:
 
 Usage:
     from src.performance import initialize_performance_stack
-    
+
     # Initialize complete performance stack
     stack = initialize_performance_stack()
-    
+
     # Process symbols at scale
     results = stack.process_symbols_sync(symbol_list, analysis_function)
 """

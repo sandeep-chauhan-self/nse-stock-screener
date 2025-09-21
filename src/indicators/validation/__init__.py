@@ -37,22 +37,22 @@ from .utils import (
 __all__ = [
     # Data generation and datasets
     'ValidationDataset',
-    'StressEvent', 
+    'StressEvent',
     'StressTestDataGenerator',
     'get_validation_dataset',
     'create_stress_test_data',
     'STRESS_EVENTS',
-    
+
     # Test framework
     'IndicatorTestCase',
     'RSITests',
-    'MACDTests', 
+    'MACDTests',
     'ATRTests',
     'PerformanceTests',
     'StressTests',
     'ValidationTestSuite',
     'run_validation_tests',
-    
+
     # Validation utilities
     'ValidationMetrics',
     'RegressionTestResult',

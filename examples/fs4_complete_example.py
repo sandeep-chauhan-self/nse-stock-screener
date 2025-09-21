@@ -38,10 +38,10 @@ from src.scoring import (
 
 def create_sample_configuration():
     """Create a sample configuration demonstrating FS.4 capabilities."""
-    
+
     # Create default configuration
     config = create_default_config()
-    
+
     # Customize some components for demonstration
     for component in config.components:
         if component.name == "momentum_composite":
@@ -53,10 +53,10 @@ def create_sample_configuration():
             component.weight = 0.30
         elif component.name == "relative_performance":
             component.weight = 0.25
-    
+
     # Add custom bonus/penalty rules
     from src.scoring.scoring_schema import BonusPenaltyRule
-    
+
     high_volume_bonus = BonusPenaltyRule(
         name="high_volume_bonus",
         description="Bonus for exceptional volume (>3x average)",
@@ -65,34 +65,34 @@ def create_sample_configuration():
         value=3.0,
         bonus=5.0
     )
-    
+
     config.bonus_penalty_rules.append(high_volume_bonus)
-    
+
     return config
 
 
 def generate_sample_data():
     """Generate sample market data for demonstration."""
     symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ADANIGREEN', 'BHARTIARTL']
-    
+
     historical_data = {}
     rng = np.random.default_rng(42)
-    
+
     for symbol in symbols:
         # Generate 1 year of daily data
         dates = pd.date_range(start='2023-01-01', end='2024-01-01', freq='D')
-        
+
         # Generate realistic price data with some trend
         base_price = rng.uniform(100, 2000)
         price_changes = rng.normal(0.001, 0.025, len(dates))  # Daily returns
         prices = [base_price]
-        
+
         for change in price_changes[1:]:
             prices.append(prices[-1] * (1 + change))
-        
+
         volume_base = rng.uniform(1000000, 10000000)
         volumes = rng.uniform(0.5, 2.0, len(dates)) * volume_base
-        
+
         data = pd.DataFrame({
             'Close': prices,
             'Volume': volumes,
@@ -100,9 +100,9 @@ def generate_sample_data():
             'Low': [p * rng.uniform(0.95, 1.0) for p in prices],
             'Open': prices  # Simplified
         }, index=dates)
-        
+
         historical_data[symbol] = data
-    
+
     return historical_data
 
 
@@ -110,23 +110,23 @@ def generate_sample_indicators(symbol, data):
     """Generate sample technical indicators for a symbol."""
     if len(data) < 20:
         return {}
-    
+
     close_prices = data['Close']
     volumes = data['Volume']
-    
+
     # Calculate some basic indicators (simplified versions)
     sma_20 = close_prices.rolling(20).mean().iloc[-1]
     sma_50 = close_prices.rolling(50).mean().iloc[-1] if len(close_prices) >= 50 else sma_20
-    
+
     current_price = close_prices.iloc[-1]
     price_vs_sma20 = (current_price - sma_20) / sma_20 * 100
-    
+
     avg_volume = volumes.rolling(20).mean().iloc[-1]
     vol_ratio = volumes.iloc[-1] / avg_volume
-    
+
     # Mock some additional indicators
     rng = np.random.default_rng(hash(symbol) % 2**32)
-    
+
     return {
         'symbol': symbol,
         'current_price': current_price,
@@ -146,54 +146,54 @@ def generate_sample_indicators(symbol, data):
 def demonstrate_scoring_engine():
     """Demonstrate the scoring engine with sample data."""
     print("=== FS.4 Scoring Engine Demonstration ===")
-    
+
     # Create configuration
     config = create_sample_configuration()
     print(f"Created configuration with {len(config.components)} components")
-    
+
     # Initialize scoring engine
     engine = ScoringEngine(config)
     print("Initialized scoring engine")
-    
+
     # Generate sample data
     historical_data = generate_sample_data()
     print(f"Generated sample data for {len(historical_data)} symbols")
-    
+
     # Score each symbol
     results = []
     for symbol, data in historical_data.items():
         indicators = generate_sample_indicators(symbol, data)
-        
+
         if indicators:
             result = engine.score(symbol, indicators)
             results.append(result)
-            
+
             print(f"\n{symbol}:")
             print(f"  Total Score: {result.total_score:.2f}")
             print(f"  Confidence: {result.confidence:.3f}")
             print(f"  Probability Level: {result.probability_level}")
             print(f"  Components: {len(result.component_scores)}")
-            
+
             # Show top scoring components
-            top_components = sorted(result.component_scores, 
+            top_components = sorted(result.component_scores,
                                   key=lambda x: x.weighted_score, reverse=True)[:3]
             for comp in top_components:
                 print(f"    {comp.name}: {comp.weighted_score:.2f}")
-    
+
     return config, results, historical_data
 
 
 def demonstrate_parameter_persistence():
     """Demonstrate parameter store and database persistence."""
     print("\n=== Parameter Persistence Demonstration ===")
-    
+
     # Initialize parameter store
     db_path = "data/temp/scoring_demo.db"
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    
+
     param_store = ParameterStore(db_path)
     print(f"Initialized parameter store: {db_path}")
-    
+
     # Create and save configuration
     config = create_sample_configuration()
     config_id = param_store.save_config(
@@ -204,18 +204,18 @@ def demonstrate_parameter_persistence():
             'use_case': 'demonstration'
         }
     )
-    
+
     print(f"Saved configuration with ID: {config_id}")
-    
+
     # Track some performance metrics
     param_store.track_config_performance(config_id, "demo_backtest", 0.15)
     param_store.track_config_performance(config_id, "demo_sharpe", 1.25)
-    
+
     # List saved configurations
     try:
         configs = param_store.get_best_configs(metric_name="demo_backtest", limit=5)
         print(f"Configurations found: {len(configs)}")
-        
+
         for config_id, score in configs:
             config_data, _ = param_store.get_config(config_id)
             if config_data:
@@ -225,25 +225,25 @@ def demonstrate_parameter_persistence():
         # Get database stats instead
         stats = param_store.get_database_stats()
         print(f"Database stats: {stats}")
-    
+
     return param_store, config_id
 
 
 def demonstrate_calibration_harness():
     """Demonstrate weight optimization with calibration harness."""
     print("\n=== Calibration Harness Demonstration ===")
-    
+
     # Create base configuration
     config = create_sample_configuration()
     historical_data = generate_sample_data()
-    
+
     # Initialize parameter store for tracking
     param_store = ParameterStore("data/temp/scoring_demo.db")
-    
+
     # Create calibration harness
     calibrator = CalibrationHarness(config, param_store)
     print("Initialized calibration harness")
-    
+
     # Define validation periods
     validation_periods = [
         ValidationPeriod(
@@ -257,9 +257,9 @@ def demonstrate_calibration_harness():
             name="validation_period"
         )
     ]
-    
+
     print("Starting weight optimization...")
-    
+
     # Run optimization (small grid for demo)
     result = calibrator.optimize_weights(
         historical_data=historical_data,
@@ -268,52 +268,52 @@ def demonstrate_calibration_harness():
         validation_periods=validation_periods,
         steps=3  # Small grid for demonstration
     )
-    
+
     print("Optimization completed!")
     print(f"  Method: {result.method_used}")
     print(f"  Objective: {result.objective_function}")
     print(f"  Best Score: {result.best_score:.4f}")
     print(f"  Total Evaluations: {result.total_evaluations}")
     print(f"  Time: {result.optimization_time_seconds:.1f} seconds")
-    
+
     # Show optimized weights
     print("\nOptimized Component Weights:")
     for component in result.best_config.get_enabled_components():
         print(f"  {component.name}: {component.weight:.3f}")
-    
+
     # Get optimization summary
     summary = calibrator.get_optimization_summary(result)
     print("\nOptimization Summary:")
     print(f"  Score Range: {summary['score_statistics']['min']:.4f} - {summary['score_statistics']['max']:.4f}")
     print(f"  Score Mean: {summary['score_statistics']['mean']:.4f}")
     print(f"  Improvement: {summary['improvement']['absolute']:.4f} ({summary['improvement']['relative_pct']:.1f}%)")
-    
+
     return result
 
 
 def demonstrate_yaml_configuration():
     """Demonstrate YAML configuration loading and saving."""
     print("\n=== YAML Configuration Demonstration ===")
-    
+
     # Create sample configuration
     config = create_sample_configuration()
-    
+
     # Save to YAML
     yaml_path = "data/temp/sample_scoring_config.yaml"
     os.makedirs(os.path.dirname(yaml_path), exist_ok=True)
-    
+
     try:
         from src.scoring.scoring_schema import save_config_to_file, load_config_from_file
-        
+
         save_config_to_file(config, yaml_path)
         print(f"Saved configuration to: {yaml_path}")
-        
+
         # Load back from YAML
         loaded_config = load_config_from_file(yaml_path)
         print(f"Loaded configuration: {loaded_config.name} v{loaded_config.version}")
         print(f"  Components: {len(loaded_config.components)}")
         print(f"  Rules: {len(loaded_config.bonus_penalty_rules)}")
-        
+
     except ImportError:
         print("YAML support requires PyYAML package")
         print("Install with: pip install PyYAML")
@@ -323,20 +323,20 @@ def main():
     """Main demonstration function."""
     print("FS.4 Composite Scoring & Model Governance - Complete Example")
     print("=" * 60)
-    
+
     try:
         # 1. Demonstrate scoring engine
         _, _, _ = demonstrate_scoring_engine()
-        
+
         # 2. Demonstrate parameter persistence
         _, _ = demonstrate_parameter_persistence()
-        
+
         # 3. Demonstrate calibration harness
         demonstrate_calibration_harness()
-        
+
         # 4. Demonstrate YAML configuration
         demonstrate_yaml_configuration()
-        
+
         print("\n" + "=" * 60)
         print("FS.4 Demonstration completed successfully!")
         print("\nKey Features Demonstrated:")
@@ -346,11 +346,11 @@ def main():
         print("✅ Weight optimization with calibration harness")
         print("✅ YAML configuration support")
         print("✅ Transparent, auditable scoring system")
-        
+
         print("\nFiles created:")
         print("  - Database: data/temp/scoring_demo.db")
         print("  - Config: data/temp/sample_scoring_config.yaml")
-        
+
     except Exception as e:
         print(f"Error during demonstration: {e}")
         import traceback

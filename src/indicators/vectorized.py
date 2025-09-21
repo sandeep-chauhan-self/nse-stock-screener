@@ -20,30 +20,30 @@ from .numba_ops import (
 
 class RSIIndicator(VectorizedIndicator):
     """Relative Strength Index using Wilder's method with Numba optimization."""
-    
+
     def __init__(self, period: int = 14, use_numba: bool = True):
         super().__init__(period=period, use_numba=use_numba)
         self.period = period
         self.use_numba = use_numba
-    
+
     @property
     def name(self) -> str:
         return f"RSI_{self.period}"
-    
+
     @property
     def indicator_type(self) -> IndicatorType:
         return IndicatorType.MOMENTUM
-    
+
     @property
     def required_periods(self) -> int:
         return self.period + 10  # Extra buffer for stability
-    
+
     def get_required_columns(self) -> List[str]:
         return ['Close']
-    
+
     def compute(self, data: pd.DataFrame, **kwargs) -> IndicatorResult:
         start_time = time.perf_counter()
-        
+
         try:
             # Validate input data
             is_valid, errors = self.validate_data(data)
@@ -54,9 +54,9 @@ class RSIIndicator(VectorizedIndicator):
                     metadata={"errors": errors},
                     computation_time_ms=0.0
                 )
-            
+
             close_prices = data['Close'].values
-            
+
             if self.use_numba:
                 # Use Numba-optimized calculation
                 rsi_values = calculate_rsi_wilder(close_prices, self.period)
@@ -66,22 +66,22 @@ class RSIIndicator(VectorizedIndicator):
                 # Use pandas calculation
                 close = data['Close']
                 delta = close.diff()
-                
+
                 up = delta.clip(lower=0)
                 down = -delta.clip(upper=0)
-                
+
                 # Wilder's smoothing
                 alpha = 1 / self.period
                 up_ewm = up.ewm(alpha=alpha, adjust=False).mean()
                 down_ewm = down.ewm(alpha=alpha, adjust=False).mean()
-                
+
                 rs = up_ewm / down_ewm
                 rsi_series = 100 - (100 / (1 + rs))
                 current_rsi = rsi_series.iloc[-1]
-            
+
             # Calculate confidence
             confidence = self.calculate_confidence(data, current_rsi)
-            
+
             # Determine trend and overbought/oversold levels
             if current_rsi >= 70:
                 condition = "overbought"
@@ -91,10 +91,10 @@ class RSIIndicator(VectorizedIndicator):
                 condition = "bullish"
             else:
                 condition = "bearish"
-            
+
             end_time = time.perf_counter()
             computation_time = (end_time - start_time) * 1000
-            
+
             return IndicatorResult(
                 value=rsi_series,  # Return full time series
                 confidence=confidence,
@@ -108,7 +108,7 @@ class RSIIndicator(VectorizedIndicator):
                 computation_time_ms=computation_time,
                 data_points_used=len(data)
             )
-            
+
         except Exception as e:
             return IndicatorResult(
                 value=math.nan,
@@ -120,35 +120,35 @@ class RSIIndicator(VectorizedIndicator):
 
 class MACDIndicator(VectorizedIndicator):
     """MACD (Moving Average Convergence Divergence) indicator."""
-    
+
     def __init__(self, fast: int = 12, slow: int = 26, signal: int = 9):
         super().__init__(fast=fast, slow=slow, signal=signal)
         self.fast = fast
         self.slow = slow
         self.signal = signal
-    
+
     @property
     def name(self) -> str:
         return f"MACD_{self.fast}_{self.slow}_{self.signal}"
-    
+
     @property
     def indicator_type(self) -> IndicatorType:
         return IndicatorType.MOMENTUM
-    
+
     @property
     def required_periods(self) -> int:
         return self.slow + self.signal + 10
-    
+
     @property
     def output_names(self) -> List[str]:
         return ['macd_line', 'signal_line', 'histogram']
-    
+
     def get_required_columns(self) -> List[str]:
         return ['Close']
-    
+
     def compute(self, data: pd.DataFrame, **kwargs) -> IndicatorResult:
         start_time = time.perf_counter()
-        
+
         try:
             is_valid, errors = self.validate_data(data)
             if not is_valid:
@@ -158,35 +158,35 @@ class MACDIndicator(VectorizedIndicator):
                     metadata={"errors": errors},
                     computation_time_ms=0.0
                 )
-            
+
             close = data['Close']
-            
+
             # Calculate MACD components using vectorized operations
             ema_fast = self._ewm_operation(close, span=self.fast)
             ema_slow = self._ewm_operation(close, span=self.slow)
             macd_line = ema_fast - ema_slow
             signal_line = self._ewm_operation(macd_line, span=self.signal)
             histogram = macd_line - signal_line
-            
+
             # Create result DataFrame
             macd_df = pd.DataFrame({
                 'MACD': macd_line,
                 'Signal': signal_line,
                 'Histogram': histogram
             }, index=data.index)
-            
+
             # Current values
             current_macd = macd_line.iloc[-1]
             current_signal = signal_line.iloc[-1]
             current_histogram = histogram.iloc[-1]
-            
+
             # Calculate confidence
             confidence = self.calculate_confidence(data, current_macd)
-            
+
             # Determine trend
             is_bullish = current_macd > current_signal and current_histogram > 0
             trend = "bullish" if is_bullish else "bearish"
-            
+
             # Check for crossover signals
             prev_histogram = histogram.iloc[-2] if len(histogram) > 1 else 0
             crossover = None
@@ -194,9 +194,9 @@ class MACDIndicator(VectorizedIndicator):
                 crossover = "bullish_crossover"
             elif current_histogram < 0 and prev_histogram >= 0:
                 crossover = "bearish_crossover"
-            
+
             end_time = time.perf_counter()
-            
+
             return IndicatorResult(
                 value=macd_df,  # Return full time series DataFrame
                 confidence=confidence,
@@ -211,7 +211,7 @@ class MACDIndicator(VectorizedIndicator):
                 computation_time_ms=(end_time - start_time) * 1000,
                 data_points_used=len(data)
             )
-            
+
         except Exception as e:
             return IndicatorResult(
                 value={"macd_line": math.nan, "signal_line": math.nan, "histogram": math.nan},
@@ -223,30 +223,30 @@ class MACDIndicator(VectorizedIndicator):
 
 class ATRIndicator(VectorizedIndicator):
     """Average True Range indicator with Numba optimization."""
-    
+
     def __init__(self, period: int = 14, use_numba: bool = True):
         super().__init__(period=period, use_numba=use_numba)
         self.period = period
         self.use_numba = use_numba
-    
+
     @property
     def name(self) -> str:
         return f"ATR_{self.period}"
-    
+
     @property
     def indicator_type(self) -> IndicatorType:
         return IndicatorType.VOLATILITY
-    
+
     @property
     def required_periods(self) -> int:
         return self.period + 5
-    
+
     def get_required_columns(self) -> List[str]:
         return ['High', 'Low', 'Close']
-    
+
     def compute(self, data: pd.DataFrame, **kwargs) -> IndicatorResult:
         start_time = time.perf_counter()
-        
+
         try:
             is_valid, errors = self.validate_data(data)
             if not is_valid:
@@ -256,13 +256,13 @@ class ATRIndicator(VectorizedIndicator):
                     metadata={"errors": errors},
                     computation_time_ms=0.0
                 )
-            
+
             if self.use_numba:
                 # Use Numba-optimized calculation
                 high_values = data['High'].values
                 low_values = data['Low'].values
                 close_values = data['Close'].values
-                
+
                 atr_values = calculate_atr(high_values, low_values, close_values, self.period)
                 current_atr = atr_values[-1]
             else:
@@ -270,16 +270,16 @@ class ATRIndicator(VectorizedIndicator):
                 high = data['High']
                 low = data['Low']
                 close = data['Close']
-                
+
                 tr = self._true_range(high, low, close)
                 atr = self._ewm_operation(tr, alpha=1/self.period)
                 atr_series = atr
                 current_atr = atr.iloc[-1]
-            
+
             # Calculate ATR as percentage of current price
             current_price = data['Close'].iloc[-1]
             atr_percentage = (current_atr / current_price) * 100 if current_price > 0 else math.nan
-            
+
             # Classify volatility level
             if atr_percentage > 4:
                 volatility_level = "very_high"
@@ -289,11 +289,11 @@ class ATRIndicator(VectorizedIndicator):
                 volatility_level = "normal"
             else:
                 volatility_level = "low"
-            
+
             confidence = self.calculate_confidence(data, current_atr)
-            
+
             end_time = time.perf_counter()
-            
+
             return IndicatorResult(
                 value=atr_series,  # Return full time series
                 confidence=confidence,
@@ -307,7 +307,7 @@ class ATRIndicator(VectorizedIndicator):
                 computation_time_ms=(end_time - start_time) * 1000,
                 data_points_used=len(data)
             )
-            
+
         except Exception as e:
             return IndicatorResult(
                 value=math.nan,
@@ -319,35 +319,35 @@ class ATRIndicator(VectorizedIndicator):
 
 class BollingerBandsIndicator(VectorizedIndicator):
     """Bollinger Bands indicator with Numba optimization."""
-    
+
     def __init__(self, period: int = 20, std_dev: float = 2.0, use_numba: bool = True):
         super().__init__(period=period, std_dev=std_dev, use_numba=use_numba)
         self.period = period
         self.std_dev = std_dev
         self.use_numba = use_numba
-    
+
     @property
     def name(self) -> str:
         return f"BBANDS_{self.period}_{self.std_dev}"
-    
+
     @property
     def indicator_type(self) -> IndicatorType:
         return IndicatorType.VOLATILITY
-    
+
     @property
     def required_periods(self) -> int:
         return self.period + 5
-    
+
     @property
     def output_names(self) -> List[str]:
         return ['upper_band', 'middle_band', 'lower_band', 'bb_width', 'bb_position']
-    
+
     def get_required_columns(self) -> List[str]:
         return ['Close']
-    
+
     def compute(self, data: pd.DataFrame, **kwargs) -> IndicatorResult:
         start_time = time.perf_counter()
-        
+
         try:
             is_valid, errors = self.validate_data(data)
             if not is_valid:
@@ -357,16 +357,16 @@ class BollingerBandsIndicator(VectorizedIndicator):
                     metadata={"errors": errors},
                     computation_time_ms=0.0
                 )
-            
+
             close = data['Close']
-            
+
             if self.use_numba:
                 # Use Numba-optimized calculation
                 close_values = close.values
                 upper_band, middle_band, lower_band = calculate_bollinger_bands(
                     close_values, self.period, self.std_dev
                 )
-                
+
                 current_upper = upper_band[-1]
                 current_middle = middle_band[-1]
                 current_lower = lower_band[-1]
@@ -374,20 +374,20 @@ class BollingerBandsIndicator(VectorizedIndicator):
                 # Use pandas calculation
                 middle_band = self._rolling_operation(close, self.period, 'mean')
                 std = self._rolling_operation(close, self.period, 'std')
-                
+
                 upper_band = middle_band + (self.std_dev * std)
                 lower_band = middle_band - (self.std_dev * std)
-                
+
                 current_upper = upper_band.iloc[-1]
                 current_middle = middle_band.iloc[-1]
                 current_lower = lower_band.iloc[-1]
-            
+
             current_price = close.iloc[-1]
-            
+
             # Calculate Bollinger Band metrics
             bb_width = ((current_upper - current_lower) / current_middle) * 100 if current_middle > 0 else math.nan
             bb_position = ((current_price - current_lower) / (current_upper - current_lower)) * 100 if (current_upper - current_lower) > 0 else 50
-            
+
             # Determine position relative to bands
             if bb_position >= 80:
                 band_position = "near_upper"
@@ -395,11 +395,11 @@ class BollingerBandsIndicator(VectorizedIndicator):
                 band_position = "near_lower"
             else:
                 band_position = "middle"
-            
+
             confidence = self.calculate_confidence(data, current_middle)
-            
+
             end_time = time.perf_counter()
-            
+
             return IndicatorResult(
                 value={
                     "upper_band": round(float(current_upper), 2) if not math.isnan(current_upper) else math.nan,
@@ -420,7 +420,7 @@ class BollingerBandsIndicator(VectorizedIndicator):
                 computation_time_ms=(end_time - start_time) * 1000,
                 data_points_used=len(data)
             )
-            
+
         except Exception as e:
             return IndicatorResult(
                 value={"upper_band": math.nan, "middle_band": math.nan, "lower_band": math.nan},
@@ -432,34 +432,34 @@ class BollingerBandsIndicator(VectorizedIndicator):
 
 class ADXIndicator(VectorizedIndicator):
     """Average Directional Index with Numba optimization."""
-    
+
     def __init__(self, period: int = 14, use_numba: bool = True):
         super().__init__(period=period, use_numba=use_numba)
         self.period = period
         self.use_numba = use_numba
-    
+
     @property
     def name(self) -> str:
         return f"ADX_{self.period}"
-    
+
     @property
     def indicator_type(self) -> IndicatorType:
         return IndicatorType.TREND
-    
+
     @property
     def required_periods(self) -> int:
         return self.period * 2 + 10
-    
+
     @property
     def output_names(self) -> List[str]:
         return ['adx', 'di_plus', 'di_minus']
-    
+
     def get_required_columns(self) -> List[str]:
         return ['High', 'Low', 'Close']
-    
+
     def compute(self, data: pd.DataFrame, **kwargs) -> IndicatorResult:
         start_time = time.perf_counter()
-        
+
         try:
             is_valid, errors = self.validate_data(data)
             if not is_valid:
@@ -469,17 +469,17 @@ class ADXIndicator(VectorizedIndicator):
                     metadata={"errors": errors},
                     computation_time_ms=0.0
                 )
-            
+
             if self.use_numba:
                 # Use Numba-optimized calculation
                 high_values = data['High'].values
                 low_values = data['Low'].values
                 close_values = data['Close'].values
-                
+
                 adx_values, di_plus_values, di_minus_values = calculate_adx(
                     high_values, low_values, close_values, self.period
                 )
-                
+
                 current_adx = adx_values[-1]
                 current_di_plus = di_plus_values[-1]
                 current_di_minus = di_minus_values[-1]
@@ -488,16 +488,16 @@ class ADXIndicator(VectorizedIndicator):
                 high = data['High']
                 low = data['Low']
                 close = data['Close']
-                
+
                 # This is a simplified version - full implementation would match Numba version
                 tr = self._true_range(high, low, close)
-                
+
                 # For brevity, returning NaN for pandas version
                 # Full implementation would replicate the ADX calculation
                 current_adx = math.nan
                 current_di_plus = math.nan
                 current_di_minus = math.nan
-            
+
             # Determine trend strength
             if current_adx >= 50:
                 trend_strength = "very_strong"
@@ -507,7 +507,7 @@ class ADXIndicator(VectorizedIndicator):
                 trend_strength = "moderate"
             else:
                 trend_strength = "weak"
-            
+
             # Determine trend direction
             if current_di_plus > current_di_minus:
                 trend_direction = "bullish"
@@ -515,11 +515,11 @@ class ADXIndicator(VectorizedIndicator):
                 trend_direction = "bearish"
             else:
                 trend_direction = "neutral"
-            
+
             confidence = self.calculate_confidence(data, current_adx)
-            
+
             end_time = time.perf_counter()
-            
+
             return IndicatorResult(
                 value={
                     "adx": round(float(current_adx), 2) if not math.isnan(current_adx) else math.nan,
@@ -537,7 +537,7 @@ class ADXIndicator(VectorizedIndicator):
                 computation_time_ms=(end_time - start_time) * 1000,
                 data_points_used=len(data)
             )
-            
+
         except Exception as e:
             return IndicatorResult(
                 value={"adx": math.nan, "di_plus": math.nan, "di_minus": math.nan},
@@ -549,34 +549,34 @@ class ADXIndicator(VectorizedIndicator):
 
 class VolumeProfileIndicator(VectorizedIndicator):
     """Vectorized Volume Profile calculation for breakout detection."""
-    
+
     def __init__(self, lookback: int = 90, num_buckets: int = 20):
         super().__init__(lookback=lookback, num_buckets=num_buckets)
         self.lookback = lookback
         self.num_buckets = num_buckets
-    
+
     @property
     def name(self) -> str:
         return f"VOLPROFILE_{self.lookback}_{self.num_buckets}"
-    
+
     @property
     def indicator_type(self) -> IndicatorType:
         return IndicatorType.VOLUME
-    
+
     @property
     def required_periods(self) -> int:
         return self.lookback
-    
+
     @property
     def output_names(self) -> List[str]:
         return ['breakout_score', 'resistance_level', 'support_level', 'high_volume_node']
-    
+
     def get_required_columns(self) -> List[str]:
         return ['High', 'Low', 'Close', 'Volume']
-    
+
     def compute(self, data: pd.DataFrame, **kwargs) -> IndicatorResult:
         start_time = time.perf_counter()
-        
+
         try:
             is_valid, errors = self.validate_data(data)
             if not is_valid:
@@ -586,15 +586,15 @@ class VolumeProfileIndicator(VectorizedIndicator):
                     metadata={"errors": errors},
                     computation_time_ms=0.0
                 )
-            
+
             # Use recent data for volume profile
             recent_data = data.tail(self.lookback).copy()
-            
+
             # Vectorized volume profile calculation
             price_min = recent_data['Low'].min()
             price_max = recent_data['High'].max()
             price_range = price_max - price_min
-            
+
             if price_range <= 0:
                 return IndicatorResult(
                     value={"breakout_score": 0, "resistance_level": math.nan},
@@ -602,15 +602,15 @@ class VolumeProfileIndicator(VectorizedIndicator):
                     metadata={"error": "No price range in data"},
                     computation_time_ms=(time.perf_counter() - start_time) * 1000
                 )
-            
+
             # Create price buckets
             midpoint_prices = (recent_data['High'] + recent_data['Low']) / 2
             volumes = recent_data['Volume'].values
-            
+
             # Use numpy histogram with weights for volume distribution
             bin_edges = np.linspace(price_min, price_max, self.num_buckets + 1)
             volume_at_price, _ = np.histogram(midpoint_prices, bins=bin_edges, weights=volumes)
-            
+
             # Find high volume nodes (top 20% by volume)
             if np.sum(volume_at_price) == 0:
                 return IndicatorResult(
@@ -619,21 +619,21 @@ class VolumeProfileIndicator(VectorizedIndicator):
                     metadata={"error": "No volume data"},
                     computation_time_ms=(time.perf_counter() - start_time) * 1000
                 )
-            
+
             volume_threshold = np.percentile(volume_at_price[volume_at_price > 0], 80)
             high_volume_mask = volume_at_price >= volume_threshold
             high_volume_indices = np.where(high_volume_mask)[0]
-            
+
             # Convert bucket indices to price levels
             bucket_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
             high_volume_prices = bucket_centers[high_volume_indices]
-            
+
             # Analyze current price position
             current_price = data['Close'].iloc[-1]
             breakout_score = 0
             resistance_level = math.nan
             support_level = math.nan
-            
+
             if len(high_volume_prices) > 0:
                 # Find nearest resistance above current price
                 resistance_mask = high_volume_prices > current_price
@@ -642,18 +642,18 @@ class VolumeProfileIndicator(VectorizedIndicator):
                     distance_to_resistance = (resistance_level - current_price) / current_price
                     if distance_to_resistance < 0.02:  # Within 2%
                         breakout_score = min(10, 10 * (0.02 - distance_to_resistance) / 0.02)
-                
+
                 # Find nearest support below current price
                 support_mask = high_volume_prices < current_price
                 if np.any(support_mask):
                     support_level = np.max(high_volume_prices[support_mask])
-            
+
             high_volume_node = np.max(high_volume_prices) if len(high_volume_prices) > 0 else math.nan
-            
+
             confidence = self.calculate_confidence(data, breakout_score)
-            
+
             end_time = time.perf_counter()
-            
+
             return IndicatorResult(
                 value={
                     "breakout_score": round(float(breakout_score), 1),
@@ -672,7 +672,7 @@ class VolumeProfileIndicator(VectorizedIndicator):
                 computation_time_ms=(end_time - start_time) * 1000,
                 data_points_used=len(recent_data)
             )
-            
+
         except Exception as e:
             return IndicatorResult(
                 value={"breakout_score": 0, "resistance_level": math.nan},
@@ -693,7 +693,7 @@ VolumeProfile = VolumeProfileIndicator
 # All available indicators
 __all__ = [
     'RSIIndicator', 'RSI',
-    'MACDIndicator', 'MACD', 
+    'MACDIndicator', 'MACD',
     'ATRIndicator', 'ATR',
     'BollingerBandsIndicator', 'BollingerBands',
     'ADXIndicator', 'ADX',

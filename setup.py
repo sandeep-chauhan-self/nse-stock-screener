@@ -14,7 +14,7 @@ def run_command(cmd: str, description: str = "", check: bool = True) -> bool:
     """Run a shell command with error handling."""
     if description:
         print(f"📦 {description}...")
-    
+
     try:
         result = subprocess.run(
             cmd,
@@ -40,7 +40,7 @@ def check_python_version() -> bool:
         print(f"❌ Python {version.major}.{version.minor} is not supported")
         print("📋 Required: Python 3.9 or higher")
         return False
-    
+
     print(f"✅ Python {version.major}.{version.minor}.{version.micro} is supported")
     return True
 
@@ -48,18 +48,18 @@ def check_python_version() -> bool:
 def install_dependencies() -> bool:
     """Install project dependencies."""
     print("📦 Installing project dependencies...")
-    
+
     # Upgrade pip first
     if not run_command(f"{sys.executable} -m pip install --upgrade pip"):
         return False
-    
+
     # Install development dependencies
     if not run_command(f"{sys.executable} -m pip install -e .[dev]"):
         print("⚠️  Failed to install with -e, trying regular install...")
         if not run_command(f"{sys.executable} -m pip install .[dev]"):
             print("❌ Failed to install dependencies")
             return False
-    
+
     return True
 
 
@@ -68,7 +68,7 @@ def setup_pre_commit() -> bool:
     if not Path(".pre-commit-config.yaml").exists():
         print("⚠️  .pre-commit-config.yaml not found, skipping pre-commit setup")
         return True
-    
+
     print("🔗 Setting up pre-commit hooks...")
     return run_command("pre-commit install", check=False)
 
@@ -77,7 +77,7 @@ def create_directories() -> bool:
     """Create necessary directories."""
     directories = [
         "data",
-        "data/temp", 
+        "data/temp",
         "output",
         "output/reports",
         "output/charts",
@@ -85,32 +85,32 @@ def create_directories() -> bool:
         "logs",
         "test-output"
     ]
-    
+
     print("📁 Creating project directories...")
     for directory in directories:
         Path(directory).mkdir(parents=True, exist_ok=True)
         print(f"  ✅ {directory}")
-    
+
     return True
 
 
 def check_optional_dependencies() -> None:
     """Check for optional dependencies and provide installation guidance."""
     print("\n🔍 Checking optional dependencies...")
-    
+
     optional_deps = {
         "ta-lib": "Technical Analysis Library (for advanced indicators)",
         "redis": "Redis server (for caching)",
         "docker": "Docker (for containerization)"
     }
-    
+
     for dep, description in optional_deps.items():
         try:
             if dep == "docker":
-                subprocess.run(["docker", "--version"], 
+                subprocess.run(["docker", "--version"],
                              capture_output=True, check=True)
             elif dep == "redis":
-                subprocess.run(["redis-cli", "--version"], 
+                subprocess.run(["redis-cli", "--version"],
                              capture_output=True, check=True)
             else:
                 __import__(dep.replace("-", "_"))
@@ -122,11 +122,11 @@ def check_optional_dependencies() -> None:
 def run_initial_checks() -> bool:
     """Run initial health checks."""
     print("\n🏥 Running initial health checks...")
-    
+
     # Check dependencies
     if Path("scripts/check_deps.py").exists():
         return run_command(f"{sys.executable} scripts/check_deps.py", check=False)
-    
+
     # Basic import test
     return run_command(
         f"{sys.executable} -c \"import src; print('✅ Basic imports working')\"",
@@ -162,33 +162,33 @@ def main() -> int:
     """Main setup function."""
     print("🚀 NSE Stock Screener Development Setup")
     print("=" * 50)
-    
+
     # Check Python version
     if not check_python_version():
         return 1
-    
+
     # Create directories
     if not create_directories():
         print("❌ Failed to create directories")
         return 1
-    
+
     # Install dependencies
     if not install_dependencies():
         print("❌ Failed to install dependencies")
         return 1
-    
+
     # Setup pre-commit
     setup_pre_commit()
-    
+
     # Check optional dependencies
     check_optional_dependencies()
-    
+
     # Run initial checks
     run_initial_checks()
-    
+
     # Show next steps
     show_next_steps()
-    
+
     return 0
 
 

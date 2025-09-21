@@ -1,0 +1,91 @@
+{
+  "watchlists": {
+    "blue_chips": {
+      "name": "Blue Chip Stalwarts",
+      "description": "Large-cap market leaders with consistent performance",
+      "symbols": ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS"],
+      "sector": "Mixed"
+    },
+    "banking": {
+      "name": "Banking Sector Leaders", 
+      "description": "Top private and public sector banks",
+      "symbols": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "KOTAKBANK.NS", "AXISBANK.NS"],
+      "sector": "Banking"
+    },
+    "technology": {
+      "name": "IT & Technology Giants",
+      "description": "Leading IT services and technology companies", 
+      "symbols": ["TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS"],
+      "sector": "Information Technology"
+    },
+    "fmcg": {
+      "name": "FMCG Powerhouses",
+      "description": "Fast-moving consumer goods leaders",
+      "symbols": ["HINDUNILVR.NS", "NESTLEIND.NS", "ITC.NS", "BRITANNIA.NS", "DABUR.NS"],
+      "sector": "FMCG"
+    },
+    "pharma": {
+      "name": "Pharmaceutical Leaders",
+      "description": "Top pharmaceutical and healthcare companies",
+      "symbols": ["SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "BIOCON.NS"],
+      "sector": "Pharmaceuticals"
+    },
+    "auto": {
+      "name": "Automotive Sector",
+      "description": "Leading automobile manufacturers",
+      "symbols": ["MARUTI.NS", "TATAMOTORS.NS", "M&M.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS"],
+      "sector": "Automotive"
+    },
+    "metals": {
+      "name": "Metals & Mining",
+      "description": "Steel, aluminum and mining companies",
+      "symbols": ["TATASTEEL.NS", "HINDALCO.NS", "JSW.NS", "VEDL.NS", "COALINDIA.NS"],
+      "sector": "Metals & Mining"
+    },
+    "energy": {
+      "name": "Energy & Oil",
+      "description": "Oil, gas and energy companies",
+      "symbols": ["RELIANCE.NS", "ONGC.NS", "IOC.NS", "BPCL.NS", "GAIL.NS"],
+      "sector": "Energy"
+    },
+    "nifty50_sample": {
+      "name": "NIFTY 50 Sample",
+      "description": "Representative sample from NIFTY 50 index",
+      "symbols": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS", 
+                 "ICICIBANK.NS", "SBIN.NS", "BHARTIARTL.NS", "ITC.NS", "LT.NS"],
+      "sector": "Mixed"
+    },
+    "small_cap_gems": {
+      "name": "Small Cap Opportunities",
+      "description": "Promising small-cap stocks for growth",
+      "symbols": ["DIXON.NS", "POLYCAB.NS", "MPHASIS.NS", "MINDTREE.NS", "ROUTE.NS"],
+      "sector": "Mixed"
+    }
+  },
+  "search_aliases": {
+    "REL": "RELIANCE.NS",
+    "TCS": "TCS.NS", 
+    "INFY": "INFY.NS",
+    "HDFC": "HDFCBANK.NS",
+    "ICICI": "ICICIBANK.NS",
+    "SBI": "SBIN.NS",
+    "ITC": "ITC.NS",
+    "BAJAJ": "BAJFINANCE.NS",
+    "WIPRO": "WIPRO.NS",
+    "HUL": "HINDUNILVR.NS",
+    "MARUTI": "MARUTI.NS",
+    "TATA": "TATAMOTORS.NS",
+    "BHARTI": "BHARTIARTL.NS",
+    "LT": "LT.NS",
+    "ONGC": "ONGC.NS",
+    "COAL": "COALINDIA.NS",
+    "SAIL": "SAIL.NS"
+  },
+  "config": {
+    "auto_add_ns_suffix": true,
+    "validate_symbols": true,
+    "max_symbols_per_analysis": 20,
+    "default_watchlist": "blue_chips",
+    "last_updated": "2025-09-21"
+  }
+}

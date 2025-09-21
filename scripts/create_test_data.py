@@ -13,7 +13,7 @@ def create_sample_stock_symbols():
     """Create a sample list of stock symbols for testing."""
     test_symbols = [
         "RELIANCE.NS",
-        "TCS.NS", 
+        "TCS.NS",
         "INFY.NS",
         "HDFCBANK.NS",
         "ICICIBANK.NS",
@@ -33,17 +33,17 @@ def create_sample_stock_symbols():
         "NESTLEIND.NS",
         "POWERGRID.NS"
     ]
-    
+
     return test_symbols
 
 
 def generate_synthetic_stock_data(symbol: str, days: int = 365) -> pd.DataFrame:
     """Generate synthetic stock data for testing."""
     rng = np.random.default_rng(hash(symbol) % 2**32)  # Deterministic but different per symbol
-    
+
     dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
     dates = dates[dates.weekday < 5]  # Only weekdays
-    
+
     # Base price varies by symbol
     base_prices = {
         'RELIANCE.NS': 2500,
@@ -57,17 +57,17 @@ def generate_synthetic_stock_data(symbol: str, days: int = 365) -> pd.DataFrame:
         'LT.NS': 2000,
         'KOTAKBANK.NS': 1800
     }
-    
+
     base_price = base_prices.get(symbol, 1000)
-    
+
     # Generate realistic price movements
     returns = rng.normal(0.001, 0.02, len(dates))  # Daily returns
     prices = [base_price]
-    
+
     for ret in returns[1:]:
         new_price = prices[-1] * (1 + ret)
         prices.append(max(new_price, 0.01))  # Ensure positive prices
-    
+
     # Generate OHLCV data
     data = []
     for i, (date, close) in enumerate(zip(dates, prices)):
@@ -76,15 +76,15 @@ def generate_synthetic_stock_data(symbol: str, days: int = 365) -> pd.DataFrame:
         high = close * (1 + rng.uniform(0, volatility))
         low = close * (1 - rng.uniform(0, volatility))
         open_price = prices[i-1] if i > 0 else close
-        
+
         # Ensure OHLC relationships are valid
         high = max(high, open_price, close)
         low = min(low, open_price, close)
-        
+
         # Volume based on price movement
         volume_base = 1000000
         volume = int(volume_base * (1 + abs(returns[i]) * 10))
-        
+
         data.append({
             'Date': date,
             'Open': round(open_price, 2),
@@ -94,7 +94,7 @@ def generate_synthetic_stock_data(symbol: str, days: int = 365) -> pd.DataFrame:
             'Volume': volume,
             'Adj Close': round(close, 2)
         })
-    
+
     df = pd.DataFrame(data)
     df.set_index('Date', inplace=True)
     return df
@@ -105,28 +105,28 @@ def create_test_stock_data():
     test_symbols = create_sample_stock_symbols()
     data_dir = Path("data/test")
     data_dir.mkdir(exist_ok=True)
-    
+
     print("📊 Generating test stock data...")
-    
+
     for symbol in test_symbols:
         print(f"  Generating data for {symbol}")
         df = generate_synthetic_stock_data(symbol)
-        
+
         # Save as CSV
         csv_path = data_dir / f"{symbol.replace('.NS', '')}_test_data.csv"
         df.to_csv(csv_path)
-        
+
         # Also create a smaller dataset for quick tests
         quick_df = df.tail(30)  # Last 30 days
         quick_path = data_dir / f"{symbol.replace('.NS', '')}_quick_test.csv"
         quick_df.to_csv(quick_path)
-    
+
     # Create test symbols list
     symbols_path = data_dir / "test_symbols.txt"
     with open(symbols_path, 'w') as f:
         for symbol in test_symbols:
             f.write(f"{symbol.replace('.NS', '')}\n")
-    
+
     print(f"✅ Test data created in {data_dir}")
 
 
@@ -134,7 +134,7 @@ def create_test_configurations():
     """Create test configuration files."""
     config_dir = Path("data/test/configs")
     config_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Test configuration for different scenarios
     configs = {
         "conservative_test.json": {
@@ -157,7 +157,7 @@ def create_test_configurations():
                 "min_market_cap": 1000000000
             }
         },
-        
+
         "aggressive_test.json": {
             "risk_tolerance": "high",
             "max_position_size": 0.10,
@@ -178,7 +178,7 @@ def create_test_configurations():
                 "min_market_cap": 100000000
             }
         },
-        
+
         "quick_test.json": {
             "risk_tolerance": "medium",
             "max_position_size": 0.02,
@@ -200,14 +200,14 @@ def create_test_configurations():
             }
         }
     }
-    
+
     print("⚙️  Creating test configurations...")
     for filename, config in configs.items():
         config_path = config_dir / filename
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
         print(f"  Created {filename}")
-    
+
     print(f"✅ Test configurations created in {config_dir}")
 
 
@@ -215,7 +215,7 @@ def create_test_scenarios():
     """Create test scenarios for different market conditions."""
     scenarios_dir = Path("data/test/scenarios")
     scenarios_dir.mkdir(parents=True, exist_ok=True)
-    
+
     scenarios = {
         "bullish_market.json": {
             "description": "Bullish market conditions with upward trends",
@@ -227,7 +227,7 @@ def create_test_scenarios():
             "trend_direction": "up",
             "avg_daily_return": 0.015
         },
-        
+
         "bearish_market.json": {
             "description": "Bearish market conditions with downward trends",
             "market_sentiment": "bearish",
@@ -238,7 +238,7 @@ def create_test_scenarios():
             "trend_direction": "down",
             "avg_daily_return": -0.012
         },
-        
+
         "sideways_market.json": {
             "description": "Sideways market with range-bound movement",
             "market_sentiment": "neutral",
@@ -249,7 +249,7 @@ def create_test_scenarios():
             "trend_direction": "sideways",
             "avg_daily_return": 0.002
         },
-        
+
         "high_volatility.json": {
             "description": "High volatility market conditions",
             "market_sentiment": "uncertain",
@@ -261,14 +261,14 @@ def create_test_scenarios():
             "avg_daily_return": 0.005
         }
     }
-    
+
     print("📈 Creating test scenarios...")
     for filename, scenario in scenarios.items():
         scenario_path = scenarios_dir / filename
         with open(scenario_path, 'w') as f:
             json.dump(scenario, f, indent=2)
         print(f"  Created {filename}")
-    
+
     print(f"✅ Test scenarios created in {scenarios_dir}")
 
 
@@ -276,7 +276,7 @@ def create_sample_results():
     """Create sample analysis results for testing."""
     results_dir = Path("data/test/sample_results")
     results_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Sample analysis results
     sample_results = {
         "analysis_timestamp": datetime.now().isoformat(),
@@ -323,12 +323,12 @@ def create_sample_results():
             }
         ]
     }
-    
+
     # Save sample results
     results_path = results_dir / "sample_analysis.json"
     with open(results_path, 'w') as f:
         json.dump(sample_results, f, indent=2)
-    
+
     # Create sample CSV report
     csv_data = pd.DataFrame([
         {"Symbol": "RELIANCE", "Score": 85.5, "Signal": "BUY", "Price": 2550.0, "Change": 2.5},
@@ -337,10 +337,10 @@ def create_sample_results():
         {"Symbol": "HDFCBANK", "Score": 75.9, "Signal": "HOLD", "Price": 1485.0, "Change": -0.2},
         {"Symbol": "ITC", "Score": 45.2, "Signal": "SELL", "Price": 445.0, "Change": -3.1},
     ])
-    
+
     csv_path = results_dir / "sample_analysis.csv"
     csv_data.to_csv(csv_path, index=False)
-    
+
     print(f"✅ Sample results created in {results_dir}")
 
 
@@ -395,11 +395,11 @@ DEBUG_MODE=true
 PROFILING_ENABLED=true
 MEMORY_MONITORING=true
 """
-    
+
     env_path = Path("data/test/.env.test")
     with open(env_path, 'w') as f:
         f.write(env_content)
-    
+
     print(f"✅ Test environment file created at {env_path}")
 
 
@@ -407,7 +407,7 @@ def main():
     """Main function to create all test data and fixtures."""
     print("🧪 Creating Test Data and Fixtures for NSE Stock Screener")
     print("=" * 60)
-    
+
     try:
         # Create all test components
         create_test_stock_data()
@@ -415,7 +415,7 @@ def main():
         create_test_scenarios()
         create_sample_results()
         create_test_environment_file()
-        
+
         print("\n" + "=" * 60)
         print("✅ All test data and fixtures created successfully!")
         print("=" * 60)
@@ -432,11 +432,11 @@ def main():
         print("  - Load test data: pd.read_csv('data/test/RELIANCE_test_data.csv')")
         print("  - Use test config: json.load(open('data/test/configs/quick_test.json'))")
         print("  - Run scenarios: pytest tests/ -m 'integration'")
-        
+
     except Exception as e:
         print(f"❌ Error creating test data: {e}")
         return 1
-    
+
     return 0
 
 

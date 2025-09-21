@@ -14,7 +14,7 @@ Key Features:
 
 Usage:
     from common.paths import PathManager
-    
+
     pm = PathManager()
     output_file = pm.get_data_path('nse_symbols.txt')
     pm.ensure_data_dir()
@@ -31,15 +31,15 @@ import argparse
 class PathManager:
     """
     Centralized path management for cross-platform compatibility.
-    
+
     Automatically determines repository root and provides methods for
     accessing standard directories (data, output, etc.) in a portable way.
     """
-    
+
     def __init__(self, custom_base_dir: Optional[Union[str, Path]] = None):
         """
         Initialize path manager.
-        
+
         Args:
             custom_base_dir: Optional custom base directory. If None, auto-detects
                            repository root based on current file location.
@@ -49,11 +49,11 @@ class PathManager:
         else:
             # Auto-detect repository root by finding the directory containing 'src'
             self._base_dir = self._find_repo_root()
-        
+
         # Standard directory structure
         self._standard_dirs = {
             'src': self._base_dir / 'src',
-            'data': self._base_dir / 'data', 
+            'data': self._base_dir / 'data',
             'output': self._base_dir / 'output',
             'reports': self._base_dir / 'output' / 'reports',
             'charts': self._base_dir / 'output' / 'charts',
@@ -62,123 +62,123 @@ class PathManager:
             'scripts': self._base_dir / 'scripts',
             'temp': self._base_dir / 'data' / 'temp'
         }
-    
+
     def _find_repo_root(self) -> Path:
         """
         Find repository root by locating directory containing 'src' folder.
-        
+
         Returns:
             Path to repository root
-            
+
         Raises:
             FileNotFoundError: If repository root cannot be determined
         """
         # Start from current file location and walk up
         current = Path(__file__).resolve().parent
-        
+
         # If we're in src/common, go up two levels
         if current.name == 'common' and current.parent.name == 'src':
             return current.parent.parent
-        
+
         # Otherwise, walk up looking for 'src' directory
         while current != current.parent:  # Stop at filesystem root
             if (current / 'src').is_dir():
                 return current
             current = current.parent
-        
+
         # Fallback: use the parent of the directory containing this file
         fallback = Path(__file__).resolve().parent.parent.parent
         if (fallback / 'src').is_dir():
             return fallback
-            
+
         raise FileNotFoundError(
             f"Could not determine repository root. "
             f"Looked for 'src' directory starting from {Path(__file__).resolve()}"
         )
-    
+
     @property
     def base_dir(self) -> Path:
         """Repository base directory."""
         return self._base_dir
-    
+
     def get_data_path(self, filename: str) -> Path:
         """
         Get path to file in data directory.
-        
+
         Args:
             filename: Name of file in data directory
-            
+
         Returns:
             Full path to data file
         """
         return self._standard_dirs['data'] / filename
-    
+
     def get_output_path(self, subdir: str, filename: str) -> Path:
         """
         Get path to file in output subdirectory.
-        
+
         Args:
             subdir: Subdirectory name ('reports', 'charts', 'backtests')
             filename: Name of output file
-            
+
         Returns:
             Full path to output file
         """
         if subdir not in ['reports', 'charts', 'backtests']:
             raise ValueError(f"Invalid output subdir: {subdir}. Must be one of: reports, charts, backtests")
-        
+
         return self._standard_dirs[subdir] / filename
-    
+
     def get_temp_path(self, filename: str) -> Path:
         """
         Get path to file in temp directory.
-        
+
         Args:
             filename: Name of temp file
-            
+
         Returns:
             Full path to temp file
         """
         return self._standard_dirs['temp'] / filename
-    
+
     def get_standard_dir(self, dir_name: str) -> Path:
         """
         Get path to standard directory.
-        
+
         Args:
             dir_name: Directory name ('data', 'output', 'reports', etc.)
-            
+
         Returns:
             Full path to directory
         """
         if dir_name not in self._standard_dirs:
             available = ', '.join(self._standard_dirs.keys())
             raise ValueError(f"Unknown directory: {dir_name}. Available: {available}")
-        
+
         return self._standard_dirs[dir_name]
-    
+
     def ensure_dir(self, dir_path: Union[str, Path]) -> Path:
         """
         Ensure directory exists, creating it if necessary.
-        
+
         Args:
             dir_path: Path to directory
-            
+
         Returns:
             Path object for the directory
         """
         path = Path(dir_path)
         path.mkdir(parents=True, exist_ok=True)
         return path
-    
+
     def ensure_data_dir(self) -> Path:
         """Ensure data directory exists."""
         return self.ensure_dir(self._standard_dirs['data'])
-    
+
     def ensure_output_dirs(self) -> Dict[str, Path]:
         """
         Ensure all output directories exist.
-        
+
         Returns:
             Dictionary mapping directory names to Path objects
         """
@@ -186,30 +186,30 @@ class PathManager:
         for name in ['output', 'reports', 'charts', 'backtests']:
             output_dirs[name] = self.ensure_dir(self._standard_dirs[name])
         return output_dirs
-    
+
     def ensure_temp_dir(self) -> Path:
         """Ensure temp directory exists."""
         return self.ensure_dir(self._standard_dirs['temp'])
-    
+
     def resolve_path(self, path_str: str) -> Path:
         """
         Resolve a path string that may contain relative components.
-        
+
         Handles legacy paths like "../data/file.txt" by converting them
         to proper repository-relative paths.
-        
+
         Args:
             path_str: Path string (may be relative or absolute)
-            
+
         Returns:
             Resolved absolute Path object
         """
         path = Path(path_str)
-        
+
         # If it's already absolute, return as-is
         if path.is_absolute():
             return path
-        
+
         # Handle common relative patterns
         if str(path).startswith("../data/"):
             # Convert "../data/file.txt" to proper data path
@@ -225,28 +225,28 @@ class PathManager:
         else:
             # Resolve relative to repository root
             return (self._base_dir / path).resolve()
-    
+
     def get_working_dir_independent_path(self, target_path: Union[str, Path]) -> Path:
         """
         Get a path that works regardless of current working directory.
-        
+
         This is crucial for scripts that may be called from different directories.
-        
+
         Args:
             target_path: Target path (relative or absolute)
-            
+
         Returns:
             Absolute path that works from any working directory
         """
         return self.resolve_path(str(target_path))
 
 
-def add_output_argument(parser: argparse.ArgumentParser, 
+def add_output_argument(parser: argparse.ArgumentParser,
                        default_filename: str,
                        help_text: str = "Output file path") -> None:
     """
     Add standardized --output argument to argument parser.
-    
+
     Args:
         parser: ArgumentParser instance
         default_filename: Default filename (will be placed in appropriate directory)
@@ -260,22 +260,22 @@ def add_output_argument(parser: argparse.ArgumentParser,
     )
 
 
-def resolve_output_path(args_output: Optional[str], 
+def resolve_output_path(args_output: Optional[str],
                        default_filename: str,
                        output_type: str = 'data') -> Path:
     """
     Resolve output path from command line arguments.
-    
+
     Args:
         args_output: Output path from command line (or None)
         default_filename: Default filename to use
         output_type: Type of output ('data', 'reports', 'charts', 'backtests')
-        
+
     Returns:
         Resolved output path
     """
     pm = PathManager()
-    
+
     if args_output:
         # User specified custom output path
         return pm.resolve_path(args_output)
@@ -321,7 +321,7 @@ __all__ = [
     'add_output_argument',
     'resolve_output_path',
     'get_data_path',
-    'get_output_path', 
+    'get_output_path',
     'get_temp_path',
     'ensure_dir',
     'resolve_path'
@@ -336,6 +336,6 @@ if __name__ == "__main__":
     print(f"Output directory: {pm.get_standard_dir('output')}")
     print(f"Sample data path: {pm.get_data_path('nse_symbols.txt')}")
     print(f"Sample output path: {pm.get_output_path('reports', 'analysis.csv')}")
-    
+
     # Test legacy path resolution
     print(f"Legacy path '../data/test.txt' resolves to: {pm.resolve_path('../data/test.txt')}")

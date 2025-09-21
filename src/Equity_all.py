@@ -27,17 +27,17 @@ DEFAULT_OUTPUT_FILE = "nse_only_symbols.txt"
 def fetch_nse_symbols():
     """
     Fetch NSE equity symbols using enhanced data fetcher.
-    
+
     Returns:
         List of symbol strings, or None if fetch failed
     """
     try:
         logger.info("Fetching NSE equity symbols using enhanced data layer")
         print("📡 Fetching NSE equity symbols from enhanced data layer...")
-        
+
         # Use the enhanced NSE fetcher with caching and retry logic
         symbols = get_nse_symbols(force_refresh=True)  # Force refresh for latest data
-        
+
         if symbols:
             logger.info(f"Successfully fetched {len(symbols)} NSE symbols")
             print(f"✅ Successfully downloaded {len(symbols)} symbols")
@@ -47,7 +47,7 @@ def fetch_nse_symbols():
             logger.error("Enhanced NSE fetcher returned no symbols")
             print("❌ Failed to fetch symbols using enhanced data layer")
             return None
-        
+
     except Exception as e:
         logger.error(f"Error fetching NSE symbols: {e}")
         logging.error(f"❌ Error fetching NSE data: {e}")
@@ -57,7 +57,7 @@ def fetch_nse_symbols():
 def save_symbols(symbols, output_path):
     """
     Save symbols to a text file.
-    
+
     Args:
         symbols: List of symbol strings
         output_path: Path object where to save the symbols
@@ -65,15 +65,15 @@ def save_symbols(symbols, output_path):
     try:
         # Ensure parent directory exists
         ensure_dir(output_path.parent)
-        
+
         print(f"💾 Saving {len(symbols)} symbols to: {output_path}")
-        
+
         # Write symbols to file (one per line)
         output_path.write_text('\n'.join(symbols) + '\n', encoding='utf-8')
-        
+
         print(f"✅ NSE symbols saved successfully")
         print(f"📁 File location: {output_path.resolve()}")
-        
+
     except Exception as e:
         logging.error(f"❌ Error saving symbols: {e}")
         raise
@@ -92,41 +92,41 @@ Examples:
   %(prog)s --output /path/to/symbols.txt
         """
     )
-    
+
     # Add output argument
     add_output_argument(parser, DEFAULT_OUTPUT_FILE, "Output file for NSE symbols")
-    
+
     # Parse arguments
     args = parser.parse_args()
-    
+
     # Resolve output path
     output_path = resolve_output_path(args.output, DEFAULT_OUTPUT_FILE, 'data')
-    
+
     print("=" * 60)
     print("🇮🇳 NSE EQUITY SYMBOL FETCHER")
     print("=" * 60)
     print("Downloading official NSE equity symbols from NSE archives")
     print(f"Output will be saved to: {output_path}")
     print("=" * 60)
-    
+
     # Fetch symbols
     symbols = fetch_nse_symbols()
-    
+
     if not symbols:
         print("\n❌ Failed to fetch NSE symbols. Please check your internet connection and try again.")
         return 1
-    
+
     if len(symbols) == 0:
         print("\n⚠️  No symbols found in the downloaded data.")
         return 1
-    
+
     # Save symbols
     try:
         save_symbols(symbols, output_path)
         print(f"\n🎉 Successfully processed {len(symbols)} NSE equity symbols!")
         print("💡 You can now use this file with the NSE Stock Screener.")
         return 0
-        
+
     except Exception as e:
         print(f"\n❌ Failed to save symbols: {e}")
         return 1

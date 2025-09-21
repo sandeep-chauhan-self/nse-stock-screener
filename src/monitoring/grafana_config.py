@@ -43,7 +43,7 @@ class GrafanaConfig:
 
 class DashboardBuilder:
     """Builder for creating Grafana dashboard configurations."""
-    
+
     def __init__(self, config: GrafanaConfig):
         self.config = config
         self.dashboard_template = {
@@ -68,21 +68,21 @@ class DashboardBuilder:
             "folderId": 0,
             "overwrite": True
         }
-    
+
     def create_main_dashboard(self) -> Dict[str, Any]:
         """Create the main NSE Stock Screener dashboard."""
         dashboard = self._create_base_dashboard(
             title="NSE Stock Screener - Main Dashboard",
             description="Main dashboard for NSE Stock Screener monitoring"
         )
-        
+
         panels = []
         panel_id = 1
-        
+
         # System Overview Row
         panels.append(self._create_row_panel("System Overview", panel_id))
         panel_id += 1
-        
+
         # Request Rate Panel
         panels.append(self._create_stat_panel(
             title="Request Rate",
@@ -95,7 +95,7 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         # Error Rate Panel
         panels.append(self._create_stat_panel(
             title="Error Rate",
@@ -113,7 +113,7 @@ class DashboardBuilder:
             ]
         ))
         panel_id += 1
-        
+
         # Response Time Panel
         panels.append(self._create_graph_panel(
             title="Response Time",
@@ -136,11 +136,11 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         # Cache Performance Row
         panels.append(self._create_row_panel("Cache Performance", panel_id))
         panel_id += 1
-        
+
         # Cache Hit Rate Panel
         panels.append(self._create_stat_panel(
             title="Cache Hit Rate",
@@ -158,7 +158,7 @@ class DashboardBuilder:
             ]
         ))
         panel_id += 1
-        
+
         # Cache Operations Panel
         panels.append(self._create_graph_panel(
             title="Cache Operations",
@@ -177,11 +177,11 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         # System Resources Row
         panels.append(self._create_row_panel("System Resources", panel_id))
         panel_id += 1
-        
+
         # CPU Usage Panel
         panels.append(self._create_graph_panel(
             title="CPU Usage",
@@ -195,7 +195,7 @@ class DashboardBuilder:
             y_axis={"min": 0, "max": 100}
         ))
         panel_id += 1
-        
+
         # Memory Usage Panel
         panels.append(self._create_graph_panel(
             title="Memory Usage",
@@ -214,7 +214,7 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         # Disk Usage Panel
         panels.append(self._create_stat_panel(
             title="Disk Usage",
@@ -232,11 +232,11 @@ class DashboardBuilder:
             ]
         ))
         panel_id += 1
-        
+
         # Business Metrics Row
         panels.append(self._create_row_panel("Business Metrics", panel_id))
         panel_id += 1
-        
+
         # Symbols Processed Panel
         panels.append(self._create_stat_panel(
             title="Symbols Processed",
@@ -249,7 +249,7 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         # Analysis Signals Panel
         panels.append(self._create_graph_panel(
             title="Analysis Signals",
@@ -262,7 +262,7 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         # Portfolio Value Panel
         panels.append(self._create_stat_panel(
             title="Portfolio Value",
@@ -275,24 +275,24 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         dashboard["dashboard"]["panels"] = panels
         return dashboard
-    
+
     def create_performance_dashboard(self) -> Dict[str, Any]:
         """Create performance-focused dashboard."""
         dashboard = self._create_base_dashboard(
             title="NSE Stock Screener - Performance Analysis",
             description="Detailed performance analysis and optimization metrics"
         )
-        
+
         panels = []
         panel_id = 1
-        
+
         # Performance Overview
         panels.append(self._create_row_panel("Performance Overview", panel_id))
         panel_id += 1
-        
+
         # Latency Heatmap
         panels.append(self._create_heatmap_panel(
             title="Response Time Heatmap",
@@ -304,7 +304,7 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         # Throughput Analysis
         panels.append(self._create_graph_panel(
             title="Throughput by Operation",
@@ -317,7 +317,7 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         # Error Analysis
         panels.append(self._create_graph_panel(
             title="Error Rate by Operation",
@@ -330,10 +330,10 @@ class DashboardBuilder:
             panel_id=panel_id
         ))
         panel_id += 1
-        
+
         dashboard["dashboard"]["panels"] = panels
         return dashboard
-    
+
     def _create_base_dashboard(self, title: str, description: str) -> Dict[str, Any]:
         """Create base dashboard structure."""
         dashboard = json.loads(json.dumps(self.dashboard_template))
@@ -341,7 +341,7 @@ class DashboardBuilder:
         dashboard["dashboard"]["description"] = description
         dashboard["dashboard"]["uid"] = title.lower().replace(" ", "-").replace("nse-stock-screener-", "")
         return dashboard
-    
+
     def _create_row_panel(self, title: str, panel_id: int) -> Dict[str, Any]:
         """Create a row panel for organizing dashboard sections."""
         return {
@@ -353,7 +353,7 @@ class DashboardBuilder:
             "title": title,
             "type": "row"
         }
-    
+
     def _create_stat_panel(self, title: str, targets: List[Dict], unit: str,
                           position: Dict[str, int], panel_id: int,
                           thresholds: Optional[List[Dict]] = None) -> Dict[str, Any]:
@@ -394,7 +394,7 @@ class DashboardBuilder:
             }
         }
         return panel
-    
+
     def _create_graph_panel(self, title: str, targets: List[Dict], unit: str,
                            position: Dict[str, int], panel_id: int,
                            y_axis: Optional[Dict] = None) -> Dict[str, Any]:
@@ -438,13 +438,13 @@ class DashboardBuilder:
                 }
             }
         }
-        
+
         if y_axis:
             panel["fieldConfig"]["defaults"]["min"] = y_axis.get("min")
             panel["fieldConfig"]["defaults"]["max"] = y_axis.get("max")
-        
+
         return panel
-    
+
     def _create_heatmap_panel(self, title: str, targets: List[Dict],
                              position: Dict[str, int], panel_id: int) -> Dict[str, Any]:
         """Create a heatmap panel."""
@@ -473,7 +473,7 @@ class DashboardBuilder:
                 }
             }
         }
-    
+
     def _format_target(self, target: Dict[str, Any]) -> Dict[str, Any]:
         """Format Prometheus target query."""
         return {
@@ -489,14 +489,14 @@ class DashboardBuilder:
 
 class AlertRuleBuilder:
     """Builder for creating Grafana alert rules."""
-    
+
     def __init__(self, config: GrafanaConfig):
         self.config = config
-    
+
     def create_alert_rules(self) -> List[Dict[str, Any]]:
         """Create all alert rules for NSE Stock Screener."""
         rules = []
-        
+
         # High Error Rate Alert
         rules.append(self._create_alert_rule(
             name="High Error Rate",
@@ -505,7 +505,7 @@ class AlertRuleBuilder:
             severity="critical",
             for_duration="2m"
         ))
-        
+
         # High Response Time Alert
         rules.append(self._create_alert_rule(
             name="High Response Time",
@@ -514,7 +514,7 @@ class AlertRuleBuilder:
             severity="warning",
             for_duration="5m"
         ))
-        
+
         # Low Cache Hit Rate Alert
         rules.append(self._create_alert_rule(
             name="Low Cache Hit Rate",
@@ -523,7 +523,7 @@ class AlertRuleBuilder:
             severity="warning",
             for_duration="10m"
         ))
-        
+
         # High CPU Usage Alert
         rules.append(self._create_alert_rule(
             name="High CPU Usage",
@@ -532,7 +532,7 @@ class AlertRuleBuilder:
             severity="critical",
             for_duration="5m"
         ))
-        
+
         # High Memory Usage Alert
         rules.append(self._create_alert_rule(
             name="High Memory Usage",
@@ -541,7 +541,7 @@ class AlertRuleBuilder:
             severity="warning",
             for_duration="5m"
         ))
-        
+
         # Disk Space Alert
         rules.append(self._create_alert_rule(
             name="Low Disk Space",
@@ -550,7 +550,7 @@ class AlertRuleBuilder:
             severity="critical",
             for_duration="1m"
         ))
-        
+
         # Data Freshness Alert
         rules.append(self._create_alert_rule(
             name="Stale Data",
@@ -559,9 +559,9 @@ class AlertRuleBuilder:
             severity="warning",
             for_duration="5m"
         ))
-        
+
         return rules
-    
+
     def _create_alert_rule(self, name: str, condition: str, description: str,
                           severity: str, for_duration: str) -> Dict[str, Any]:
         """Create individual alert rule."""
@@ -583,34 +583,34 @@ class AlertRuleBuilder:
 
 class GrafanaProvisioner:
     """Manages Grafana dashboard and alert provisioning."""
-    
+
     def __init__(self, config: GrafanaConfig):
         self.config = config
         self.dashboard_builder = DashboardBuilder(config)
         self.alert_builder = AlertRuleBuilder(config)
-        
+
         # Create directories
         Path(config.dashboard_dir).mkdir(parents=True, exist_ok=True)
         Path(config.alert_dir).mkdir(parents=True, exist_ok=True)
-    
+
     def provision_dashboards(self):
         """Create and save all dashboard configurations."""
         dashboards = [
             ("main-dashboard.json", self.dashboard_builder.create_main_dashboard()),
             ("performance-dashboard.json", self.dashboard_builder.create_performance_dashboard())
         ]
-        
+
         for filename, dashboard_config in dashboards:
             dashboard_path = Path(self.config.dashboard_dir) / filename
             with open(dashboard_path, 'w') as f:
                 json.dump(dashboard_config, f, indent=2)
-            
+
             logger.info(f"Dashboard configuration saved: {dashboard_path}")
-    
+
     def provision_alerts(self):
         """Create and save alert rule configurations."""
         alert_rules = self.alert_builder.create_alert_rules()
-        
+
         alert_config = {
             "groups": [
                 {
@@ -619,16 +619,16 @@ class GrafanaProvisioner:
                 }
             ]
         }
-        
+
         alert_path = Path(self.config.alert_dir) / "alert-rules.yml"
-        
+
         # Convert to YAML format
         import yaml
         with open(alert_path, 'w') as f:
             yaml.dump(alert_config, f, default_flow_style=False)
-        
+
         logger.info(f"Alert rules saved: {alert_path}")
-    
+
     def create_datasource_config(self) -> Dict[str, Any]:
         """Create Prometheus datasource configuration."""
         return {
@@ -646,28 +646,28 @@ class GrafanaProvisioner:
                 }
             ]
         }
-    
+
     def provision_all(self):
         """Provision all Grafana configurations."""
         logger.info("Starting Grafana provisioning...")
-        
+
         # Create dashboards
         self.provision_dashboards()
-        
+
         # Create alert rules
         self.provision_alerts()
-        
+
         # Create datasource config
         datasource_config = self.create_datasource_config()
         datasource_path = Path(self.config.dashboard_dir) / "datasources.yml"
-        
+
         import yaml
         with open(datasource_path, 'w') as f:
             yaml.dump(datasource_config, f, default_flow_style=False)
-        
+
         logger.info(f"Datasource configuration saved: {datasource_path}")
         logger.info("Grafana provisioning completed")
-    
+
     def create_docker_compose(self) -> str:
         """Create Docker Compose configuration for monitoring stack."""
         return """version: '3.8'
@@ -716,7 +716,7 @@ volumes:
   grafana-storage:
   redis-data:
 """
-    
+
     def create_prometheus_config(self) -> str:
         """Create Prometheus configuration."""
         return """global:
@@ -749,22 +749,22 @@ def main():
     """Main function to provision all monitoring configurations."""
     config = GrafanaConfig()
     provisioner = GrafanaProvisioner(config)
-    
+
     # Create all configurations
     provisioner.provision_all()
-    
+
     # Create Docker Compose file
     docker_compose = provisioner.create_docker_compose()
     with open("docker-compose.monitoring.yml", 'w') as f:
         f.write(docker_compose)
-    
+
     # Create Prometheus config
     prometheus_config = provisioner.create_prometheus_config()
     prometheus_dir = Path("monitoring")
     prometheus_dir.mkdir(exist_ok=True)
     with open(prometheus_dir / "prometheus.yml", 'w') as f:
         f.write(prometheus_config)
-    
+
     print("Monitoring stack configurations created successfully!")
     print("\nTo start the monitoring stack:")
     print("1. docker-compose -f docker-compose.monitoring.yml up -d")

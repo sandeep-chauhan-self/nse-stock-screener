@@ -16,7 +16,7 @@ from .validation import EnhancedDataValidator as DataValidator
 
 __all__ = [
     'DataFetcher',
-    'YahooFinanceFetcher', 
+    'YahooFinanceFetcher',
     'NSEFetcher',
     'YahooDataFetcher',
     'AlphaVantageDataFetcher',

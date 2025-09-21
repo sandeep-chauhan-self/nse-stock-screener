@@ -26,29 +26,29 @@ except ImportError:
 
 class IDataFetcher(Protocol):
     """Interface for fetching market data from various sources."""
-    
+
     def fetch(self, symbol: str, start: date, end: date, **kwargs) -> Optional[pd.DataFrame]:
         """
         Fetch OHLCV data for a symbol between start and end dates.
-        
+
         Args:
             symbol: Stock symbol (e.g., "RELIANCE")
             start: Start date for data
             end: End date for data
             **kwargs: Additional provider-specific parameters
-            
+
         Returns:
             DataFrame with OHLCV columns, or None if data unavailable
         """
         ...
-    
+
     def fetch_symbols(self, exchange: str = "NSE") -> List[str]:
         """
         Fetch list of available symbols for an exchange.
-        
+
         Args:
             exchange: Exchange identifier (default: "NSE")
-            
+
         Returns:
             List of symbol strings
         """
@@ -57,15 +57,15 @@ class IDataFetcher(Protocol):
 
 class IDataCache(Protocol):
     """Interface for caching market data."""
-    
+
     def get(self, key: str) -> Optional[pd.DataFrame]:
         """Get cached data by key."""
         ...
-    
+
     def set(self, key: str, data: pd.DataFrame, ttl_seconds: Optional[int] = None) -> None:
         """Cache data with optional TTL."""
         ...
-    
+
     def invalidate(self, pattern: str) -> None:
         """Invalidate cached data matching pattern."""
         ...
@@ -73,15 +73,15 @@ class IDataCache(Protocol):
 
 class IDataValidator(Protocol):
     """Interface for validating market data quality."""
-    
+
     def validate(self, data: pd.DataFrame, symbol: str) -> Dict[str, Any]:
         """
         Validate data quality and return validation report.
-        
+
         Args:
             data: OHLCV DataFrame to validate
             symbol: Symbol being validated
-            
+
         Returns:
             Validation report with errors, warnings, and quality metrics
         """
@@ -111,25 +111,25 @@ class IndicatorResult:
 
 class IIndicator(Protocol):
     """Interface for technical indicators."""
-    
+
     def compute(self, data: pd.DataFrame, **params) -> IndicatorResult:
         """
         Compute indicator value from OHLCV data.
-        
+
         Args:
             data: OHLCV DataFrame
             **params: Indicator-specific parameters
-            
+
         Returns:
             IndicatorResult with value, confidence, and metadata
         """
         ...
-    
+
     @property
     def name(self) -> str:
         """Indicator name."""
         ...
-    
+
     @property
     def required_periods(self) -> int:
         """Minimum periods required for calculation."""
@@ -138,20 +138,20 @@ class IIndicator(Protocol):
 
 class IIndicatorEngine(Protocol):
     """Interface for computing multiple indicators."""
-    
+
     def compute_all(self, symbol: str, data: pd.DataFrame) -> Dict[str, IndicatorResult]:
         """
         Compute all configured indicators for a symbol.
-        
+
         Args:
             symbol: Stock symbol
             data: OHLCV DataFrame
-            
+
         Returns:
             Dictionary mapping indicator names to results
         """
         ...
-    
+
     def register_indicator(self, indicator: IIndicator) -> None:
         """Register a new indicator."""
         ...
@@ -178,24 +178,24 @@ class ScoreBreakdown:
 
 class IScorer(Protocol):
     """Interface for composite scoring systems."""
-    
-    def score(self, 
-             symbol: str, 
-             indicators: Dict[str, IndicatorResult], 
+
+    def score(self,
+             symbol: str,
+             indicators: Dict[str, IndicatorResult],
              regime: MarketRegime) -> ScoreBreakdown:
         """
         Compute composite score from indicators.
-        
+
         Args:
             symbol: Stock symbol
             indicators: Dictionary of indicator results
             regime: Current market regime
-            
+
         Returns:
             Detailed score breakdown
         """
         ...
-    
+
     def classify(self, score: float) -> str:
         """Classify score into HIGH/MEDIUM/LOW."""
         ...
@@ -229,30 +229,30 @@ class RiskLimits:
 
 class IRiskManager(Protocol):
     """Interface for risk management systems."""
-    
-    def can_enter_position(self, 
-                          symbol: str, 
-                          entry_price: float, 
+
+    def can_enter_position(self,
+                          symbol: str,
+                          entry_price: float,
                           score: ScoreBreakdown,
                           atr: float) -> PositionSizeResult:
         """
         Determine if position can be entered and calculate size.
-        
+
         Args:
             symbol: Stock symbol
             entry_price: Proposed entry price
             score: Composite score breakdown
             atr: Average True Range for stop loss calculation
-            
+
         Returns:
             Position sizing result with all details
         """
         ...
-    
+
     def update_portfolio(self, symbol: str, quantity: int, price: float) -> None:
         """Update portfolio state after position entry/exit."""
         ...
-    
+
     def get_portfolio_status(self) -> Dict[str, Any]:
         """Get current portfolio status and exposures."""
         ...
@@ -296,21 +296,21 @@ class BacktestResult:
 
 class IBacktester(Protocol):
     """Interface for backtesting systems."""
-    
-    def run(self, 
-           start_date: date, 
-           end_date: date, 
+
+    def run(self,
+           start_date: date,
+           end_date: date,
            symbols: List[str],
            initial_capital: float) -> BacktestResult:
         """
         Run backtest over specified period.
-        
+
         Args:
             start_date: Backtest start date
             end_date: Backtest end date
             symbols: List of symbols to test
             initial_capital: Starting capital
-            
+
         Returns:
             Comprehensive backtest results
         """
@@ -350,23 +350,23 @@ class Order:
 
 class IOrderExecutor(Protocol):
     """Interface for order execution systems."""
-    
+
     def place_order(self, order: Order) -> str:
         """
         Place a trading order.
-        
+
         Args:
             order: Order to place
-            
+
         Returns:
             Order ID
         """
         ...
-    
+
     def cancel_order(self, order_id: str) -> bool:
         """Cancel an existing order."""
         ...
-    
+
     def get_order_status(self, order_id: str) -> OrderStatus:
         """Get current status of an order."""
         ...
@@ -378,15 +378,15 @@ class IOrderExecutor(Protocol):
 
 class IAnalysisAPI(Protocol):
     """Interface for analysis API endpoints."""
-    
+
     def analyze_symbol(self, symbol: str) -> Dict[str, Any]:
         """Analyze a single symbol and return results."""
         ...
-    
+
     def screen_stocks(self, criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Screen stocks based on criteria."""
         ...
-    
+
     def get_market_status(self) -> Dict[str, Any]:
         """Get current market status and regime."""
         ...
@@ -398,22 +398,22 @@ class IAnalysisAPI(Protocol):
 
 class IReportGenerator(Protocol):
     """Interface for generating analysis reports."""
-    
-    def generate_analysis_report(self, 
-                               results: List[ScoreBreakdown], 
+
+    def generate_analysis_report(self,
+                               results: List[ScoreBreakdown],
                                format: str = "csv") -> str:
         """
         Generate analysis report in specified format.
-        
+
         Args:
             results: List of analysis results
             format: Output format (csv, pdf, html)
-            
+
         Returns:
             Path to generated report
         """
         ...
-    
+
     def generate_chart(self, symbol: str, data: pd.DataFrame, indicators: Dict[str, Any]) -> str:
         """Generate technical analysis chart."""
         ...
@@ -425,19 +425,19 @@ class IReportGenerator(Protocol):
 
 class IConfig(Protocol):
     """Interface for configuration management."""
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value."""
         ...
-    
+
     def set(self, key: str, value: Any) -> None:
         """Set configuration value."""
         ...
-    
+
     def load_from_env(self) -> None:
         """Load configuration from environment variables."""
         ...
-    
+
     def validate(self) -> List[str]:
         """Validate configuration and return error messages."""
         ...

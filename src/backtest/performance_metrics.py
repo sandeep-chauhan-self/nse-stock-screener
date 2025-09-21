@@ -71,27 +71,27 @@ class TradeAnalysis:
 @dataclass
 class PerformanceMetrics:
     """Comprehensive performance metrics container"""
-    
+
     # Basic return metrics
     total_return: float = 0.0
     annualized_return: float = 0.0
     volatility: float = 0.0
     downside_volatility: float = 0.0
-    
+
     # Risk-adjusted metrics
     sharpe_ratio: float = 0.0
     sortino_ratio: float = 0.0
     calmar_ratio: float = 0.0
     information_ratio: float = 0.0
     treynor_ratio: float = 0.0
-    
+
     # Drawdown metrics
     max_drawdown: float = 0.0
     max_drawdown_duration: int = 0
     avg_drawdown: float = 0.0
     drawdown_frequency: float = 0.0
     recovery_factor: float = 0.0
-    
+
     # Trade-level metrics
     total_trades: int = 0
     winning_trades: int = 0
@@ -103,20 +103,20 @@ class PerformanceMetrics:
     largest_loss: float = 0.0
     profit_factor: float = 0.0
     expectancy: float = 0.0
-    
+
     # Statistical metrics
     skewness: float = 0.0
     kurtosis: float = 0.0
     var_95: float = 0.0  # Value at Risk
     cvar_95: float = 0.0  # Conditional Value at Risk
     hit_ratio: float = 0.0
-    
+
     # Benchmark comparison
     alpha: float = 0.0
     beta: float = 0.0
     tracking_error: float = 0.0
     correlation: float = 0.0
-    
+
     # Attribution
     sector_attribution: Dict[str, float] = field(default_factory=dict)
     time_attribution: Dict[str, float] = field(default_factory=dict)
@@ -129,12 +129,12 @@ class PerformanceCalculator:
     """
     Main engine for calculating comprehensive performance metrics
     """
-    
-    def __init__(self, risk_free_rate: float = 0.06, 
+
+    def __init__(self, risk_free_rate: float = 0.06,
                  trading_days_per_year: int = 252):
         """
         Initialize performance calculator
-        
+
         Args:
             risk_free_rate: Annual risk-free rate (default 6% for India)
             trading_days_per_year: Trading days per year for annualization
@@ -142,54 +142,54 @@ class PerformanceCalculator:
         self.risk_free_rate = risk_free_rate
         self.trading_days = trading_days_per_year
         self.daily_risk_free = (1 + risk_free_rate) ** (1/trading_days_per_year) - 1
-        
+
         logger.info("Initialized PerformanceCalculator with %.2f%% risk-free rate, %d trading days/year",
                    risk_free_rate*100, trading_days_per_year)
-    
+
     def calculate_returns(self, prices: Union[pd.Series, List[float]]) -> pd.Series:
         """
         Calculate returns from price series
-        
+
         Args:
             prices: Price series or list
-            
+
         Returns:
             Returns series
         """
         if isinstance(prices, list):
             prices = pd.Series(prices)
-        
+
         if len(prices) < 2:
             return pd.Series(dtype=float)
-        
+
         returns = prices.pct_change().dropna()
         return returns
-    
+
     def calculate_basic_metrics(self, returns: pd.Series) -> Dict[str, float]:
         """
         Calculate basic return and risk metrics
-        
+
         Args:
             returns: Daily returns series
-            
+
         Returns:
             Dictionary of basic metrics
         """
         if len(returns) < 2:
             return {}
-        
+
         # Clean returns
         returns = returns.dropna()
-        
+
         # Basic calculations
         total_return = (1 + returns).prod() - 1
         annualized_return = (1 + total_return) ** (self.trading_days / len(returns)) - 1
         volatility = returns.std() * np.sqrt(self.trading_days)
-        
+
         # Downside volatility (Sortino denominator)
         downside_returns = returns[returns < 0]
         downside_volatility = downside_returns.std() * np.sqrt(self.trading_days) if len(downside_returns) > 0 else 0.0
-        
+
         return {
             'total_return': total_return,
             'annualized_return': annualized_return,
@@ -197,41 +197,41 @@ class PerformanceCalculator:
             'downside_volatility': downside_volatility,
             'trading_days': len(returns)
         }
-    
+
     def calculate_risk_adjusted_metrics(self, returns: pd.Series,
                                       benchmark_returns: Optional[pd.Series] = None) -> Dict[str, float]:
         """
         Calculate risk-adjusted performance metrics
-        
+
         Args:
             returns: Daily returns series
             benchmark_returns: Optional benchmark returns for relative metrics
-            
+
         Returns:
             Dictionary of risk-adjusted metrics
         """
         if len(returns) < 2:
             return {}
-        
+
         returns = returns.dropna()
         basic_metrics = self.calculate_basic_metrics(returns)
-        
+
         metrics = {}
-        
+
         # Sharpe Ratio
         excess_returns = returns - self.daily_risk_free
         if excess_returns.std() > 0:
             metrics['sharpe_ratio'] = (excess_returns.mean() / excess_returns.std()) * np.sqrt(self.trading_days)
         else:
             metrics['sharpe_ratio'] = 0.0
-        
+
         # Sortino Ratio
         downside_returns = returns[returns < self.daily_risk_free]
         if len(downside_returns) > 0 and downside_returns.std() > 0:
             metrics['sortino_ratio'] = (excess_returns.mean() / downside_returns.std()) * np.sqrt(self.trading_days)
         else:
             metrics['sortino_ratio'] = 0.0
-        
+
         # Calmar Ratio (need drawdown calculation)
         drawdown_metrics = self.calculate_drawdown_metrics(returns)
         max_drawdown = abs(drawdown_metrics.get('max_drawdown', 0.001))  # Avoid division by zero
@@ -239,12 +239,12 @@ class PerformanceCalculator:
             metrics['calmar_ratio'] = basic_metrics['annualized_return'] / max_drawdown
         else:
             metrics['calmar_ratio'] = 0.0
-        
+
         # Benchmark-relative metrics
         if benchmark_returns is not None and len(benchmark_returns) > 0:
             # Align returns
             aligned_returns, aligned_benchmark = returns.align(benchmark_returns, join='inner')
-            
+
             if len(aligned_returns) > 10:  # Need sufficient data
                 # Information Ratio
                 active_returns = aligned_returns - aligned_benchmark
@@ -255,13 +255,13 @@ class PerformanceCalculator:
                 else:
                     metrics['information_ratio'] = 0.0
                     metrics['tracking_error'] = 0.0
-                
+
                 # Alpha and Beta (CAPM)
                 if aligned_benchmark.var() > 0:
                     beta = aligned_returns.cov(aligned_benchmark) / aligned_benchmark.var()
                     alpha = (aligned_returns.mean() - self.daily_risk_free) - beta * (aligned_benchmark.mean() - self.daily_risk_free)
                     alpha_annualized = alpha * self.trading_days
-                    
+
                     metrics['alpha'] = alpha_annualized
                     metrics['beta'] = beta
                     metrics['correlation'] = aligned_returns.corr(aligned_benchmark)
@@ -269,51 +269,51 @@ class PerformanceCalculator:
                     metrics['alpha'] = 0.0
                     metrics['beta'] = 0.0
                     metrics['correlation'] = 0.0
-                
+
                 # Treynor Ratio
                 if metrics.get('beta', 0) != 0:
                     metrics['treynor_ratio'] = (basic_metrics['annualized_return'] - self.risk_free_rate) / metrics['beta']
                 else:
                     metrics['treynor_ratio'] = 0.0
-        
+
         return metrics
-    
+
     def calculate_drawdown_metrics(self, returns: pd.Series) -> Dict[str, float]:
         """
         Calculate comprehensive drawdown metrics
-        
+
         Args:
             returns: Daily returns series
-            
+
         Returns:
             Dictionary of drawdown metrics
         """
         if len(returns) < 2:
             return {}
-        
+
         returns = returns.dropna()
-        
+
         # Calculate cumulative returns
         cumulative_returns = (1 + returns).cumprod()
-        
+
         # Calculate running maximum (peak)
         running_max = cumulative_returns.expanding().max()
-        
+
         # Calculate drawdowns
         drawdowns = (cumulative_returns - running_max) / running_max
-        
+
         # Maximum drawdown
         max_drawdown = drawdowns.min()
-        
+
         # Drawdown duration analysis
         is_in_drawdown = drawdowns < 0
         drawdown_periods = []
-        
+
         if is_in_drawdown.any():
             # Find drawdown periods
             in_drawdown = False
             start_idx = None
-            
+
             for i, in_dd in enumerate(is_in_drawdown):
                 if in_dd and not in_drawdown:
                     # Start of drawdown
@@ -324,20 +324,20 @@ class PerformanceCalculator:
                     in_drawdown = False
                     if start_idx is not None:
                         drawdown_periods.append(i - start_idx)
-            
+
             # Handle case where we end in drawdown
             if in_drawdown and start_idx is not None:
                 drawdown_periods.append(len(is_in_drawdown) - start_idx)
-        
+
         # Calculate metrics
         max_drawdown_duration = max(drawdown_periods) if drawdown_periods else 0
         avg_drawdown = drawdowns[drawdowns < 0].mean() if (drawdowns < 0).any() else 0.0
         drawdown_frequency = len(drawdown_periods) / len(returns) * self.trading_days if len(returns) > 0 else 0.0
-        
+
         # Recovery factor
         total_return = (cumulative_returns.iloc[-1] - 1) if len(cumulative_returns) > 0 else 0.0
         recovery_factor = total_return / abs(max_drawdown) if max_drawdown != 0 else 0.0
-        
+
         return {
             'max_drawdown': max_drawdown,
             'max_drawdown_duration': max_drawdown_duration,
@@ -346,54 +346,54 @@ class PerformanceCalculator:
             'recovery_factor': recovery_factor,
             'drawdowns_series': drawdowns
         }
-    
+
     def calculate_trade_metrics(self, trades: List[TradeAnalysis]) -> Dict[str, float]:
         """
         Calculate trade-level performance metrics
-        
+
         Args:
             trades: List of trade analysis objects
-            
+
         Returns:
             Dictionary of trade metrics
         """
         if not trades:
             return {}
-        
+
         # Extract returns (keep for potential future use)
         net_returns = [trade.net_return for trade in trades]
-        
+
         # Basic counts
         total_trades = len(trades)
         winning_trades = len([r for r in net_returns if r > 0])
         losing_trades = len([r for r in net_returns if r < 0])
-        
+
         # Win rate
         win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
-        
+
         # Average win/loss
         wins = [r for r in net_returns if r > 0]
         losses = [r for r in net_returns if r < 0]
-        
+
         avg_win = np.mean(wins) if wins else 0.0
         avg_loss = np.mean(losses) if losses else 0.0
-        
+
         # Largest win/loss
         largest_win = max(net_returns) if net_returns else 0.0
         largest_loss = min(net_returns) if net_returns else 0.0
-        
+
         # Profit factor
         gross_profit = sum([r for r in net_returns if r > 0])
         gross_loss = abs(sum([r for r in net_returns if r < 0]))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
-        
+
         # Expectancy
         expectancy = win_rate * avg_win + (1 - win_rate) * avg_loss
-        
+
         # Average holding period
         holding_periods = [trade.holding_period_days for trade in trades]
         avg_holding_period = np.mean(holding_periods) if holding_periods else 0.0
-        
+
         return {
             'total_trades': total_trades,
             'winning_trades': winning_trades,
@@ -407,40 +407,40 @@ class PerformanceCalculator:
             'expectancy': expectancy,
             'avg_holding_period': avg_holding_period
         }
-    
+
     def calculate_statistical_metrics(self, returns: pd.Series) -> Dict[str, float]:
         """
         Calculate statistical metrics and risk measures
-        
+
         Args:
             returns: Daily returns series
-            
+
         Returns:
             Dictionary of statistical metrics
         """
         if len(returns) < 4:  # Need minimum data for statistical measures
             return {}
-        
+
         returns = returns.dropna()
-        
+
         # Moments
         skewness = stats.skew(returns)
         kurtosis_val = stats.kurtosis(returns)  # Excess kurtosis
-        
+
         # Value at Risk (VaR) and Conditional VaR
         var_95 = np.percentile(returns, 5)  # 95% VaR (5th percentile)
         cvar_95 = returns[returns <= var_95].mean() if (returns <= var_95).any() else var_95
-        
+
         # Hit ratio (percentage of positive returns)
         hit_ratio = (returns > 0).sum() / len(returns)
-        
+
         # Tail ratio
         tail_ratio = abs(np.percentile(returns, 95)) / abs(np.percentile(returns, 5)) if np.percentile(returns, 5) != 0 else 0.0
-        
+
         # Maximum consecutive wins/losses
         consecutive_wins = self._calculate_max_consecutive(returns > 0)
         consecutive_losses = self._calculate_max_consecutive(returns < 0)
-        
+
         return {
             'skewness': skewness,
             'kurtosis': kurtosis_val,
@@ -451,55 +451,55 @@ class PerformanceCalculator:
             'max_consecutive_wins': consecutive_wins,
             'max_consecutive_losses': consecutive_losses
         }
-    
+
     def _calculate_max_consecutive(self, bool_series: pd.Series) -> int:
         """Calculate maximum consecutive True values in boolean series"""
         if len(bool_series) == 0:
             return 0
-        
+
         max_consecutive = 0
         current_consecutive = 0
-        
+
         for value in bool_series:
             if value:
                 current_consecutive += 1
                 max_consecutive = max(max_consecutive, current_consecutive)
             else:
                 current_consecutive = 0
-        
+
         return max_consecutive
-    
-    def calculate_rolling_metrics(self, returns: pd.Series, 
+
+    def calculate_rolling_metrics(self, returns: pd.Series,
                                 window_days: int = 63) -> pd.DataFrame:
         """
         Calculate rolling performance metrics
-        
+
         Args:
             returns: Daily returns series
             window_days: Rolling window size in days
-            
+
         Returns:
             DataFrame with rolling metrics
         """
         if len(returns) < window_days:
             return pd.DataFrame()
-        
+
         returns = returns.dropna()
-        
+
         # Calculate rolling metrics
         rolling_return = returns.rolling(window_days).apply(lambda x: (1 + x).prod() - 1)
         rolling_vol = returns.rolling(window_days).std() * np.sqrt(self.trading_days)
-        
+
         # Rolling Sharpe (approximation)
         rolling_excess = returns - self.daily_risk_free
-        rolling_sharpe = (rolling_excess.rolling(window_days).mean() / 
+        rolling_sharpe = (rolling_excess.rolling(window_days).mean() /
                          rolling_excess.rolling(window_days).std()) * np.sqrt(self.trading_days)
-        
+
         # Rolling drawdown
         cumulative = (1 + returns).cumprod()
         rolling_max = cumulative.rolling(window_days).max()
         rolling_drawdown = (cumulative - rolling_max) / rolling_max
-        
+
         # Combine into DataFrame
         rolling_metrics = pd.DataFrame({
             'rolling_return': rolling_return,
@@ -507,29 +507,29 @@ class PerformanceCalculator:
             'rolling_sharpe': rolling_sharpe,
             'rolling_drawdown': rolling_drawdown
         }, index=returns.index)
-        
+
         return rolling_metrics.dropna()
-    
+
     def calculate_comprehensive_metrics(self, returns: pd.Series,
                                       trades: Optional[List[TradeAnalysis]] = None,
                                       benchmark_returns: Optional[pd.Series] = None) -> PerformanceMetrics:
         """
         Calculate comprehensive performance metrics
-        
+
         Args:
             returns: Daily returns series
             trades: Optional list of individual trades
             benchmark_returns: Optional benchmark returns
-            
+
         Returns:
             PerformanceMetrics object with all calculated metrics
         """
         metrics = PerformanceMetrics()
-        
+
         if len(returns) < 2:
             logger.warning("Insufficient data for performance calculation")
             return metrics
-        
+
         try:
             # Basic metrics
             basic = self.calculate_basic_metrics(returns)
@@ -537,7 +537,7 @@ class PerformanceCalculator:
             metrics.annualized_return = basic.get('annualized_return', 0.0)
             metrics.volatility = basic.get('volatility', 0.0)
             metrics.downside_volatility = basic.get('downside_volatility', 0.0)
-            
+
             # Risk-adjusted metrics
             risk_adj = self.calculate_risk_adjusted_metrics(returns, benchmark_returns)
             metrics.sharpe_ratio = risk_adj.get('sharpe_ratio', 0.0)
@@ -549,7 +549,7 @@ class PerformanceCalculator:
             metrics.beta = risk_adj.get('beta', 0.0)
             metrics.tracking_error = risk_adj.get('tracking_error', 0.0)
             metrics.correlation = risk_adj.get('correlation', 0.0)
-            
+
             # Drawdown metrics
             drawdown = self.calculate_drawdown_metrics(returns)
             metrics.max_drawdown = drawdown.get('max_drawdown', 0.0)
@@ -557,7 +557,7 @@ class PerformanceCalculator:
             metrics.avg_drawdown = drawdown.get('avg_drawdown', 0.0)
             metrics.drawdown_frequency = drawdown.get('drawdown_frequency', 0.0)
             metrics.recovery_factor = drawdown.get('recovery_factor', 0.0)
-            
+
             # Trade-level metrics
             if trades:
                 trade_metrics = self.calculate_trade_metrics(trades)
@@ -571,7 +571,7 @@ class PerformanceCalculator:
                 metrics.largest_loss = trade_metrics.get('largest_loss', 0.0)
                 metrics.profit_factor = trade_metrics.get('profit_factor', 0.0)
                 metrics.expectancy = trade_metrics.get('expectancy', 0.0)
-            
+
             # Statistical metrics
             statistical = self.calculate_statistical_metrics(returns)
             metrics.skewness = statistical.get('skewness', 0.0)
@@ -579,10 +579,10 @@ class PerformanceCalculator:
             metrics.var_95 = statistical.get('var_95', 0.0)
             metrics.cvar_95 = statistical.get('cvar_95', 0.0)
             metrics.hit_ratio = statistical.get('hit_ratio', 0.0)
-            
+
         except Exception as e:
             logger.error(f"Error calculating performance metrics: {e}")
-        
+
         return metrics
 
 # =====================================================================================
@@ -593,23 +593,23 @@ class AttributionAnalyzer:
     """
     Analyze performance attribution by various factors
     """
-    
+
     def __init__(self, performance_calculator: PerformanceCalculator):
         self.calc = performance_calculator
-    
+
     def sector_attribution(self, trades: List[TradeAnalysis]) -> Dict[str, Dict[str, float]]:
         """
         Calculate performance attribution by sector
-        
+
         Args:
             trades: List of trades with sector information
-            
+
         Returns:
             Dictionary of sector -> metrics
         """
         if not trades:
             return {}
-        
+
         # Group trades by sector
         sector_trades = {}
         for trade in trades:
@@ -617,12 +617,12 @@ class AttributionAnalyzer:
             if sector not in sector_trades:
                 sector_trades[sector] = []
             sector_trades[sector].append(trade)
-        
+
         # Calculate metrics for each sector
         sector_metrics = {}
         for sector, sector_trade_list in sector_trades.items():
             trade_metrics = self.calc.calculate_trade_metrics(sector_trade_list)
-            
+
             # Calculate sector returns
             sector_returns = [trade.return_pct / 100 for trade in sector_trade_list]  # Convert to decimal
             if sector_returns:
@@ -633,7 +633,7 @@ class AttributionAnalyzer:
                 sector_total_return = 0.0
                 sector_avg_return = 0.0
                 sector_vol = 0.0
-            
+
             sector_metrics[sector] = {
                 'total_return': sector_total_return,
                 'avg_return': sector_avg_return,
@@ -642,26 +642,26 @@ class AttributionAnalyzer:
                 'win_rate': trade_metrics.get('win_rate', 0.0),
                 'profit_factor': trade_metrics.get('profit_factor', 0.0)
             }
-        
+
         return sector_metrics
-    
-    def time_attribution(self, returns: pd.Series, 
+
+    def time_attribution(self, returns: pd.Series,
                         frequency: str = 'monthly') -> Dict[str, float]:
         """
         Calculate performance attribution by time periods
-        
+
         Args:
             returns: Daily returns series with datetime index
             frequency: 'monthly', 'quarterly', or 'yearly'
-            
+
         Returns:
             Dictionary of time period -> return
         """
         if len(returns) < 2:
             return {}
-        
+
         returns = returns.dropna()
-        
+
         # Group by time period
         if frequency == 'monthly':
             period_returns = returns.groupby(returns.index.to_period('M')).apply(lambda x: (1 + x).prod() - 1)
@@ -671,10 +671,10 @@ class AttributionAnalyzer:
             period_returns = returns.groupby(returns.index.to_period('Y')).apply(lambda x: (1 + x).prod() - 1)
         else:
             raise ValueError(f"Unsupported frequency: {frequency}")
-        
+
         # Convert to dictionary with string keys
         time_attribution = {str(period): ret for period, ret in period_returns.items()}
-        
+
         return time_attribution
 
 # =====================================================================================
@@ -684,15 +684,15 @@ class AttributionAnalyzer:
 def create_trade_analysis_from_backtest(backtest_results: Dict[str, Any]) -> List[TradeAnalysis]:
     """
     Convert backtest results to TradeAnalysis objects
-    
+
     Args:
         backtest_results: Backtest results dictionary
-        
+
     Returns:
         List of TradeAnalysis objects
     """
     trades = []
-    
+
     # Extract trades from backtest results (format may vary)
     if 'trades' in backtest_results:
         for i, trade_data in enumerate(backtest_results['trades']):
@@ -715,7 +715,7 @@ def create_trade_analysis_from_backtest(backtest_results: Dict[str, Any]) -> Lis
                 market_cap=trade_data.get('market_cap')
             )
             trades.append(trade)
-    
+
     return trades
 
 def calculate_performance_summary(returns: pd.Series,
@@ -724,13 +724,13 @@ def calculate_performance_summary(returns: pd.Series,
                                 risk_free_rate: float = 0.06) -> PerformanceMetrics:
     """
     Convenience function to calculate comprehensive performance summary
-    
+
     Args:
         returns: Daily returns series
         benchmark_returns: Optional benchmark returns
         trades: Optional trade list
         risk_free_rate: Risk-free rate for calculations
-        
+
     Returns:
         PerformanceMetrics object
     """
@@ -743,11 +743,11 @@ def calculate_performance_summary(returns: pd.Series,
 
 if __name__ == "__main__":
     # Example usage of performance metrics
-    
+
     # Create sample data
     rng = np.random.default_rng(42)
     dates = pd.date_range('2023-01-01', '2024-01-01', freq='D')
-    
+
     # Generate sample returns with some autocorrelation
     returns = []
     current_return = 0.0
@@ -755,19 +755,19 @@ if __name__ == "__main__":
         shock = rng.normal(0, 0.02)
         current_return = 0.1 * current_return + shock  # AR(1) process
         returns.append(current_return)
-    
+
     returns_series = pd.Series(returns, index=dates)
-    
+
     # Create benchmark (slightly lower returns, lower volatility)
     benchmark_returns = returns_series * 0.8 + rng.normal(0, 0.005, len(returns_series))
-    
+
     # Calculate performance metrics
     calculator = PerformanceCalculator(risk_free_rate=0.06)
     metrics = calculator.calculate_comprehensive_metrics(
-        returns_series, 
+        returns_series,
         benchmark_returns=benchmark_returns
     )
-    
+
     # Print results
     print("📊 Performance Metrics Summary")
     print("=" * 40)
@@ -781,7 +781,7 @@ if __name__ == "__main__":
     print(f"Alpha: {metrics.alpha*100:.2f}%")
     print(f"Beta: {metrics.beta:.3f}")
     print(f"Information Ratio: {metrics.information_ratio:.3f}")
-    
+
     # Example rolling metrics
     rolling_metrics = calculator.calculate_rolling_metrics(returns_series, window_days=30)
     print("\nRolling Metrics (30-day):")

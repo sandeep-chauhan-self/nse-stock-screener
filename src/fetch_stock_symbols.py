@@ -35,11 +35,11 @@ def fetch_nse_stocks():
     """Fetch NSE (India) stock symbols using enhanced data fetcher"""
     logger.info("Fetching NSE stock symbols using enhanced data layer")
     print("Fetching NSE (India) stock list...")
-    
+
     try:
         # Use the enhanced NSE fetcher with caching and retry logic
         symbols = get_nse_symbols(force_refresh=False)
-        
+
         if symbols:
             # Add .NS suffix for Yahoo Finance compatibility
             symbols_with_suffix = [f"{symbol}.NS" for symbol in symbols]
@@ -50,7 +50,7 @@ def fetch_nse_stocks():
             # Fallback to hardcoded list if enhanced fetcher fails
             logger.warning("Enhanced NSE fetcher failed, using fallback list")
             print("⚠️ Using fallback NSE stock list...")
-            
+
             top_nse_stocks = [
                 "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
                 "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "HDFC.NS", "BAJFINANCE.NS",
@@ -65,7 +65,7 @@ def fetch_nse_stocks():
             ]
             print(f"📋 Using fallback list with {len(top_nse_stocks)} top NSE stocks")
             return top_nse_stocks
-        
+
     except Exception as e:
         logger.error(f"Error in NSE stock fetching: {e}")
         logging.error(f"❌ Error fetching NSE stocks: {e}")
@@ -74,7 +74,7 @@ def fetch_nse_stocks():
 def fetch_us_stocks():
     """Fetch US stock symbols from major exchanges"""
     print("Fetching US stock list...")
-    
+
     try:
         # Enhanced headers for avoiding blocks
         headers = {
@@ -86,7 +86,7 @@ def fetch_us_stocks():
             'Upgrade-Insecure-Requests': '1',
             'Cache-Control': 'max-age=0'
         }
-        
+
         # Try primary source
         print("Trying primary source (Wikipedia)...")
         try:
@@ -94,52 +94,52 @@ def fetch_us_stocks():
             url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
             session = requests.Session()
             response = session.get(url, headers=headers, timeout=15)
-            
+
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 table = soup.find('table', {'class': 'wikitable'})
-                
+
                 symbols = []
                 for row in table.findAll('tr')[1:]:
                     symbol = row.findAll('td')[0].text.strip()
                     symbols.append(symbol)
-                
+
                 return symbols
             else:
                 raise Exception(f"Failed with status code: {response.status_code}")
-                
+
         except Exception as e:
             print(f"Primary source failed: {e}")
             print("Trying alternative source (GitHub list)...")
-            
+
             # Try alternative source
             try:
                 alt_url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
                 response = requests.get(alt_url, headers=headers, timeout=15)
-                
+
                 if response.status_code == 200:
                     # Create temp directory if it doesn't exist
                     temp_dir = pm.ensure_temp_dir()
-                    
+
                     # Save the CSV temporarily
                     temp_file = pm.get_temp_path("sp500_temp.csv")
                     temp_file.write_bytes(response.content)
-                    
+
                     # Read the CSV
                     df = pd.read_csv(temp_file)
                     symbols = df["Symbol"].tolist()
-                    
+
                     # Clean up
                     temp_file.unlink()
-                    
+
                     return symbols
                 else:
                     raise Exception(f"Alternative source failed with status code: {response.status_code}")
-            
+
             except Exception as e:
                 print(f"Alternative source failed: {e}")
                 print("Using built-in list of top US stocks...")
-                
+
                 # Fallback to a manually curated list of top US stocks
                 top_us_stocks = [
                     "AAPL", "MSFT", "AMZN", "GOOGL", "FB", "TSLA", "BRK-B", "JNJ", "JPM", "V",
@@ -150,7 +150,7 @@ def fetch_us_stocks():
                 ]
                 print(f"Fetched {len(top_us_stocks)} top US stocks from fallback list")
                 return top_us_stocks
-        
+
     except Exception as e:
         logging.error(f"Error fetching US stocks: {e}")
         return []
@@ -158,7 +158,7 @@ def fetch_us_stocks():
 def fetch_dow_jones():
     """Fetch Dow Jones Industrial Average components"""
     print("Fetching Dow Jones stocks...")
-    
+
     try:
         # Enhanced headers for avoiding blocks
         headers = {
@@ -170,18 +170,18 @@ def fetch_dow_jones():
             'Upgrade-Insecure-Requests': '1',
             'Cache-Control': 'max-age=0'
         }
-        
+
         # Try primary source
         print("Trying primary source (Wikipedia)...")
         try:
             url = "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average"
             session = requests.Session()
             response = session.get(url, headers=headers, timeout=15)
-            
+
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 tables = soup.findAll('table', {'class': 'wikitable'})
-                
+
                 # The table with the components
                 for table in tables:
                     if 'Components' in table.text:
@@ -192,15 +192,15 @@ def fetch_dow_jones():
                                 symbol = cells[1].text.strip()
                                 symbols.append(symbol)
                         return symbols
-                
+
                 raise Exception("Could not find Components table in the page")
             else:
                 raise Exception(f"Failed with status code: {response.status_code}")
-                
+
         except Exception as e:
             print(f"Primary source failed: {e}")
             print("Using built-in list of Dow Jones stocks...")
-            
+
             # Fallback to a manually curated list of Dow Jones stocks
             dow_jones_stocks = [
                 "AAPL", "AMGN", "AXP", "BA", "CAT", "CRM", "CSCO", "CVX", "DIS", "DOW",
@@ -209,7 +209,7 @@ def fetch_dow_jones():
             ]
             print(f"Fetched {len(dow_jones_stocks)} Dow Jones stocks from fallback list")
             return dow_jones_stocks
-        
+
     except Exception as e:
         logging.error(f"Error fetching Dow Jones stocks: {e}")
         return []
@@ -217,7 +217,7 @@ def fetch_dow_jones():
 def fetch_nasdaq_100():
     """Fetch NASDAQ-100 components"""
     print("Fetching NASDAQ-100 stocks...")
-    
+
     try:
         # Enhanced headers for avoiding blocks
         headers = {
@@ -229,18 +229,18 @@ def fetch_nasdaq_100():
             'Upgrade-Insecure-Requests': '1',
             'Cache-Control': 'max-age=0'
         }
-        
+
         # Try primary source
         print("Trying primary source (Wikipedia)...")
         try:
             url = "https://en.wikipedia.org/wiki/Nasdaq-100"
             session = requests.Session()
             response = session.get(url, headers=headers, timeout=15)
-            
+
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 tables = soup.findAll('table', {'class': 'wikitable'})
-                
+
                 # The table with the components
                 for table in tables:
                     if 'Ticker symbol' in table.text:
@@ -251,20 +251,20 @@ def fetch_nasdaq_100():
                                 symbol = cells[1].text.strip()
                                 symbols.append(symbol)
                         return symbols
-                
+
                 raise Exception("Could not find table with Ticker symbol in the page")
             else:
                 raise Exception(f"Failed with status code: {response.status_code}")
-                
+
         except Exception as e:
             print(f"Primary source failed: {e}")
             print("Trying alternative source (direct API)...")
-            
+
             # Try alternative source
             try:
                 alt_url = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
                 response = requests.get(alt_url, headers={**headers, 'Accept': 'application/json'}, timeout=15)
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     if 'data' in data and 'table' in data['data'] and 'rows' in data['data']['table']:
@@ -274,11 +274,11 @@ def fetch_nasdaq_100():
                         raise Exception("Unexpected JSON structure")
                 else:
                     raise Exception(f"Alternative source failed with status code: {response.status_code}")
-            
+
             except Exception as e:
                 print(f"Alternative source failed: {e}")
                 print("Using built-in list of NASDAQ-100 stocks...")
-                
+
                 # Fallback to a manually curated list of NASDAQ-100 stocks
                 nasdaq_100_stocks = [
                     "AAPL", "ADBE", "ADI", "ADP", "ADSK", "AEP", "ALGN", "AMAT", "AMD", "AMGN",
@@ -294,7 +294,7 @@ def fetch_nasdaq_100():
                 ]
                 print(f"Fetched {len(nasdaq_100_stocks)} NASDAQ-100 stocks from fallback list")
                 return nasdaq_100_stocks
-        
+
     except Exception as e:
         logging.error(f"Error fetching NASDAQ-100 stocks: {e}")
         return []
@@ -302,7 +302,7 @@ def fetch_nasdaq_100():
 def fetch_ftse_100():
     """Fetch FTSE 100 components"""
     print("Fetching FTSE 100 stocks...")
-    
+
     try:
         # Enhanced headers for avoiding blocks
         headers = {
@@ -314,18 +314,18 @@ def fetch_ftse_100():
             'Upgrade-Insecure-Requests': '1',
             'Cache-Control': 'max-age=0'
         }
-        
+
         # Try primary source
         print("Trying primary source (Wikipedia)...")
         try:
             url = "https://en.wikipedia.org/wiki/FTSE_100_Index"
             session = requests.Session()
             response = session.get(url, headers=headers, timeout=15)
-            
+
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 tables = soup.findAll('table', {'class': 'wikitable'})
-                
+
                 # The table with the components
                 for table in tables:
                     if 'Ticker' in table.text:
@@ -336,24 +336,24 @@ def fetch_ftse_100():
                                 symbol = cells[1].text.strip() + ".L"  # Add .L suffix for London Stock Exchange
                                 symbols.append(symbol)
                         return symbols
-                
+
                 raise Exception("Could not find table with Ticker in the page")
             else:
                 raise Exception(f"Failed with status code: {response.status_code}")
-                
+
         except Exception as e:
             print(f"Primary source failed: {e}")
             print("Trying alternative source (London Stock Exchange)...")
-            
+
             # Try alternative source
             try:
                 alt_url = "https://www.londonstockexchange.com/indices/ftse-100/constituents/table"
                 response = requests.get(alt_url, headers=headers, timeout=15)
-                
+
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.content, 'html.parser')
                     table = soup.find('table', {'class': 'full-width'})
-                    
+
                     if table:
                         symbols = []
                         rows = table.find('tbody').findAll('tr')
@@ -363,18 +363,18 @@ def fetch_ftse_100():
                                 ticker_cell = cells[1]
                                 symbol = ticker_cell.text.strip() + ".L"
                                 symbols.append(symbol)
-                        
+
                         if symbols:
                             return symbols
-                    
+
                     raise Exception("Could not find ticker table")
                 else:
                     raise Exception(f"Alternative source failed with status code: {response.status_code}")
-            
+
             except Exception as e:
                 print(f"Alternative source failed: {e}")
                 print("Using built-in list of FTSE 100 stocks...")
-                
+
                 # Fallback to a manually curated list of FTSE 100 stocks
                 ftse_100_stocks = [
                     "AAL.L", "ABF.L", "ADM.L", "AHT.L", "ANTO.L", "AUTO.L", "AV.L", "AZN.L", "BA.L", "BARC.L",
@@ -390,7 +390,7 @@ def fetch_ftse_100():
                 ]
                 print(f"Fetched {len(ftse_100_stocks)} FTSE 100 stocks from fallback list")
                 return ftse_100_stocks
-        
+
     except Exception as e:
         logging.error(f"Error fetching FTSE 100 stocks: {e}")
         return []
@@ -399,32 +399,32 @@ def validate_symbols(symbols, max_to_check=100):
     """Validate that symbols exist using enhanced data fetcher"""
     logger.info(f"Validating symbols using enhanced data fetcher (checking up to {max_to_check} random symbols)")
     print(f"Validating symbols (checking up to {max_to_check} random symbols)...")
-    
+
     valid_symbols = []
-    
+
     # Shuffle and take a subset to check
     random.shuffle(symbols)
     to_check = symbols[:min(max_to_check, len(symbols))]
-    
+
     for i, symbol in enumerate(to_check):
         print(f"Checking symbol {i+1}/{len(to_check)}: {symbol}")
         try:
             # Use enhanced validation from our data layer
             is_valid = validate_symbol(symbol)
-            
+
             if is_valid:
                 valid_symbols.append(symbol)
                 print(f"✓ Valid: {symbol}")
             else:
                 print(f"✗ Invalid: {symbol}")
-                
+
             # Be gentle with the API
             time.sleep(0.5)
-            
+
         except Exception as e:
             logger.warning(f"Error checking {symbol}: {e}")
             logging.error(f"✗ Error checking {symbol}: {e}")
-    
+
     logger.info(f"Validated {len(valid_symbols)}/{len(to_check)} symbols")
     # Return both the validated subset and the full list
     return valid_symbols, symbols
@@ -433,18 +433,18 @@ def save_symbols(symbols, output_path: Path, limit=1000):
     """Save symbols to a text file"""
     # Ensure parent directory exists
     ensure_dir(output_path.parent)
-    
+
     # Limit the number of symbols if necessary
     if len(symbols) > limit:
         print(f"Limiting to {limit} symbols from {len(symbols)} available")
         random.shuffle(symbols)
         symbols = symbols[:limit]
-    
+
     print(f"Saving {len(symbols)} symbols to {output_path}")
-    
+
     # Write symbols to file
     output_path.write_text('\n'.join(symbols) + '\n')
-    
+
     print(f"Successfully saved {len(symbols)} stock symbols to {output_path}")
 
 def main():
@@ -460,36 +460,36 @@ Examples:
   %(prog)s --market all --output /path/to/output.txt
         """
     )
-    
+
     # Add arguments
     add_output_argument(parser, DEFAULT_OUTPUT_FILE, "Output file for stock symbols")
-    
+
     parser.add_argument(
         '--market', '-m',
         choices=['nse', 'us', 'ftse', 'all'],
         default='nse',
         help='Market to fetch symbols from (default: nse)'
     )
-    
+
     parser.add_argument(
         '--limit', '-l',
         type=int,
         default=1000,
         help='Maximum number of symbols to save (default: 1000)'
     )
-    
+
     parser.add_argument(
         '--interactive', '-i',
         action='store_true',
         help='Run in interactive mode with menu selection'
     )
-    
+
     # Parse arguments
     args = parser.parse_args()
-    
+
     # Resolve output path
     output_path = resolve_output_path(args.output, DEFAULT_OUTPUT_FILE, 'data')
-    
+
     print("=" * 50)
     print("STOCK SYMBOL FETCHER")
     print("=" * 50)
@@ -498,13 +498,13 @@ Examples:
     print(f"Output will be saved to: {output_path}")
     print("=" * 50)
     print()
-    
+
     # Ensure directories exist
     pm.ensure_data_dir()
     pm.ensure_temp_dir()
-    
+
     all_symbols = []
-    
+
     if args.interactive:
         # Interactive mode - show menu
         all_symbols = run_interactive_mode()
@@ -517,19 +517,19 @@ Examples:
             nse_symbols = fetch_nse_stocks()
             if nse_symbols:
                 all_symbols.extend(nse_symbols)
-                
+
         elif args.market == 'us':
             print("Fetching US market symbols...")
             us_symbols = fetch_us_stocks()
             if us_symbols:
                 all_symbols.extend(us_symbols)
-                
+
         elif args.market == 'ftse':
             print("Fetching FTSE 100 symbols...")
             ftse_symbols = fetch_ftse_100()
             if ftse_symbols:
                 all_symbols.extend(ftse_symbols)
-                
+
         elif args.market == 'all':
             print("Fetching symbols from all available markets...")
             for fetch_func, name in [
@@ -547,14 +547,14 @@ Examples:
                         print(f"✗ No {name} symbols fetched")
                 except Exception as e:
                     print(f"✗ Failed to fetch {name} symbols: {e}")
-    
+
     # Check if we got any symbols
     if not all_symbols:
         print("❌ No symbols were fetched. Please check your internet connection and try again.")
         return
-    
+
     print(f"\n📊 Total symbols fetched: {len(all_symbols)}")
-    
+
     # Remove duplicates while preserving order
     seen = set()
     unique_symbols = []
@@ -562,11 +562,11 @@ Examples:
         if symbol not in seen:
             seen.add(symbol)
             unique_symbols.append(symbol)
-    
+
     if len(unique_symbols) != len(all_symbols):
         print(f"🔄 Removed {len(all_symbols) - len(unique_symbols)} duplicate symbols")
         all_symbols = unique_symbols
-    
+
     # Validate symbol limit
     if len(all_symbols) > args.limit:
         print(f"⚠️  You have {len(all_symbols)} symbols but requested limit of {args.limit}")
@@ -577,10 +577,10 @@ Examples:
             if not proceed:
                 print("Exiting without saving.")
                 return
-    
+
     # Save to file
     save_symbols(all_symbols, output_path, args.limit)
-    
+
     logging.warning("\n✅ Done! You can now use these symbols with the Early Warning System.")
     print(f"📁 File saved to: {output_path}")
     print(f"🗂️  Absolute path: {output_path.resolve()}")
@@ -596,42 +596,42 @@ def run_interactive_mode():
     print("5. Custom selection")
     print("6. Go back to previous menu")
     print("7. Exit")
-    
+
     choice = input("\nEnter your choice (1-7): ")
-    
+
     if choice == '6':
         return []  # Go back - return empty list
     elif choice == '7':
         print("Exiting...")
         exit(0)
-    
+
     all_symbols = []
-    
+
     if choice == '1' or choice == '4':
         print("Fetching NSE symbols...")
         nse_symbols = fetch_nse_stocks()
         if nse_symbols:
             all_symbols.extend(nse_symbols)
-    
+
     if choice == '2' or choice == '4':
         print("Fetching US market symbols...")
         us_symbols = fetch_us_stocks()
         dow_symbols = fetch_dow_jones()
         nasdaq_symbols = fetch_nasdaq_100()
-        
+
         if us_symbols:
             all_symbols.extend(us_symbols)
         if dow_symbols:
             all_symbols.extend(dow_symbols)
         if nasdaq_symbols:
             all_symbols.extend(nasdaq_symbols)
-    
+
     if choice == '3' or choice == '4':
         print("Fetching FTSE 100 symbols...")
         ftse_symbols = fetch_ftse_100()
         if ftse_symbols:
             all_symbols.extend(ftse_symbols)
-    
+
     if choice == '5':
         print("\nCustom selection:")
         include_nse = input("Include NSE (India)? (y/n): ").lower() == 'y'
@@ -639,7 +639,7 @@ def run_interactive_mode():
         include_dow = input("Include Dow Jones (US)? (y/n): ").lower() == 'y'
         include_nasdaq = input("Include NASDAQ-100 (US)? (y/n): ").lower() == 'y'
         include_ftse = input("Include FTSE 100 (UK)? (y/n): ").lower() == 'y'
-        
+
         if include_nse:
             nse_symbols = fetch_nse_stocks()
             if nse_symbols:
@@ -660,7 +660,7 @@ def run_interactive_mode():
             ftse_symbols = fetch_ftse_100()
             if ftse_symbols:
                 all_symbols.extend(ftse_symbols)
-    
+
     return all_symbols
 
 
@@ -673,7 +673,7 @@ if __name__ == "__main__":
         logging.error(f"\nAn error occurred: {e}")
         import traceback
         traceback.print_exc()
-    
+
     # Only prompt for input in interactive mode
     if len(sys.argv) == 1:  # No command line arguments provided
         input("\nPress Enter to exit...")
