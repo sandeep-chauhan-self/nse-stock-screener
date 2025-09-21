@@ -1,11 +1,9 @@
 """
 Validation package for indicator testing and validation.
-
 This package provides comprehensive testing and validation capabilities
 for technical indicators, including stress testing, regression testing,
 performance validation, and accuracy verification.
 """
-
 from .stress_data import (
     ValidationDataset,
     StressEvent,
@@ -14,7 +12,6 @@ from .stress_data import (
     create_stress_test_data,
     STRESS_EVENTS
 )
-
 from .test_suite import (
     IndicatorTestCase,
     RSITests,
@@ -25,7 +22,6 @@ from .test_suite import (
     ValidationTestSuite,
     run_validation_tests
 )
-
 from .utils import (
     ValidationMetrics,
     RegressionTestResult,
@@ -33,26 +29,26 @@ from .utils import (
     ValidationReportGenerator,
     validate_indicator_suite
 )
-
 __all__ = [
+
     # Data generation and datasets
     'ValidationDataset',
-    'StressEvent', 
+    'StressEvent',
     'StressTestDataGenerator',
     'get_validation_dataset',
     'create_stress_test_data',
     'STRESS_EVENTS',
-    
+
     # Test framework
     'IndicatorTestCase',
     'RSITests',
-    'MACDTests', 
+    'MACDTests',
     'ATRTests',
     'PerformanceTests',
     'StressTests',
     'ValidationTestSuite',
     'run_validation_tests',
-    
+
     # Validation utilities
     'ValidationMetrics',
     'RegressionTestResult',

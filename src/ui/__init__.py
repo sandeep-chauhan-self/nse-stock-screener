@@ -1,6 +1,5 @@
 """
 User interface package for NSE Stock Screener
-
 Provides UI components and interfaces with:
 - IUIProvider interface implementations
 - Dashboard and visualization components
@@ -10,5 +9,4 @@ Provides UI components and interfaces with:
 
 # Placeholder for UI implementations
 # Will be populated as UI modules are migrated to this package
-
 __all__ = []

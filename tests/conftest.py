@@ -1,24 +1,19 @@
 """
 Conftest.py - Pytest configuration and shared fixtures
-
 This file provides common fixtures and configuration for all tests.
 """
-
 from pathlib import Path
 import os
 import sys
-
 from typing import Dict, Any
 from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 import pytest
-
 # Add src to Python path for testing
 ROOT_DIR = Path(__file__).parent.parent
 SRC_DIR = ROOT_DIR / "src"
 sys.path.insert(0, str(SRC_DIR))
-
 # Import test data generators
 from tests.fixtures.test_data import (
     create_test_ohlcv_data,
@@ -27,32 +22,26 @@ from tests.fixtures.test_data import (
     create_backtest_test_data,
     create_risk_management_test_scenarios
 )
-
 @pytest.fixture(scope="session")
 def test_ohlcv_data():
     """Fixture providing deterministic OHLCV test data."""
     return create_test_ohlcv_data()
-
 @pytest.fixture(scope="session")
 def expected_results():
     """Fixture providing expected indicator calculation results."""
     return create_expected_indicator_results()
-
 @pytest.fixture(scope="session")
 def regime_test_data():
     """Fixture providing test data for different market regimes."""
     return create_regime_test_data()
-
 @pytest.fixture(scope="session")
 def backtest_test_data():
     """Fixture providing test data for backtesting scenarios."""
     return create_backtest_test_data()
-
 @pytest.fixture(scope="session")
 def risk_scenarios():
     """Fixture providing risk management test scenarios."""
     return create_risk_management_test_scenarios()
-
 @pytest.fixture
 def mock_yfinance():
     """Mock yfinance to return deterministic test data."""
@@ -61,7 +50,6 @@ def mock_yfinance():
         mock_ticker.return_value = mock_instance
         mock_instance.history.return_value = create_test_ohlcv_data()
         yield mock_instance
-
 @pytest.fixture
 def mock_nifty_data():
     """Mock NIFTY data for market regime testing."""
@@ -70,7 +58,6 @@ def mock_nifty_data():
     nifty_data['Close'] = nifty_data['Close'] * 150  # Scale up like an index
     nifty_data['Volume'] = nifty_data['Volume'] * 10  # Higher index volume
     return nifty_data
-
 @pytest.fixture
 def sample_config():
     """Provide a sample configuration for testing."""
@@ -123,7 +110,6 @@ def sample_config():
             }
         }
     }
-
 @pytest.fixture
 def temp_output_dir(tmp_path):
     """Create a temporary directory for test outputs."""
@@ -133,14 +119,12 @@ def temp_output_dir(tmp_path):
     (output_dir / "charts").mkdir()
     (output_dir / "backtests").mkdir()
     return output_dir
-
 @pytest.fixture(autouse=True)
 def set_random_seed():
     """Set random seed for reproducible tests."""
     np.random.seed(42)
     import random
     random.seed(42)
-
 @pytest.fixture
 def mock_file_operations():
     """Mock file I/O operations to avoid actual file system access during tests."""
@@ -150,7 +134,6 @@ def mock_file_operations():
          patch('pathlib.Path.write_text'), \
          patch('pathlib.Path.mkdir'):
         yield
-
 @pytest.fixture
 def indicator_test_cases():
     """Provide comprehensive test cases for indicator validation."""
@@ -163,7 +146,7 @@ def indicator_test_cases():
                 'description': 'Continuous decline should result in low RSI'
             },
             {
-                'name': 'overbought_condition', 
+                'name': 'overbought_condition',
                 'close_prices': [100, 102, 104, 106, 108, 110, 112, 114, 116, 118, 120, 122, 124, 126, 128],
                 'expected_rsi_range': (65, 100),  # Should be overbought
                 'description': 'Continuous rise should result in high RSI'
@@ -198,7 +181,6 @@ def indicator_test_cases():
             }
         ]
     }
-
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     """Set up the test environment before running any tests."""
@@ -206,20 +188,16 @@ def setup_test_environment():
     test_dir = Path(__file__).parent
     (test_dir / "output").mkdir(exist_ok=True)
     (test_dir / "temp").mkdir(exist_ok=True)
-    
     # Set environment variables for testing
     os.environ['NSE_SCREENER_ENV'] = 'test'
     os.environ['PYTHONPATH'] = str(SRC_DIR)
-    
     yield
-    
     # Cleanup after all tests
     import shutil
     temp_dirs = [test_dir / "output", test_dir / "temp"]
     for temp_dir in temp_dirs:
         if temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
-
 # Custom markers for organizing tests
 def pytest_configure(config):
     """Configure custom pytest markers."""
@@ -228,7 +206,6 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: Slow tests that may take time")
     config.addinivalue_line("markers", "requires_network: Tests requiring internet")
     config.addinivalue_line("markers", "requires_talib: Tests requiring TA-Lib")
-
 # Test data validation
 def pytest_runtest_setup(item):
     """Run setup for each test item."""
@@ -236,11 +213,9 @@ def pytest_runtest_setup(item):
     if item.get_closest_marker("requires_network"):
         pytest.importorskip("requests")
         # Could add actual network connectivity check here
-    
     # Skip TA-Lib tests if not installed
     if item.get_closest_marker("requires_talib"):
         pytest.importorskip("talib")
-
 # Performance monitoring for tests
 @pytest.fixture(autouse=True)
 def measure_test_time(request):
@@ -250,19 +225,15 @@ def measure_test_time(request):
     yield
     end_time = time.time()
     duration = end_time - start_time
-    
     # Log slow tests
     if duration > 5.0:  # Tests taking more than 5 seconds
         print(f"\n⚠️  Slow test detected: {request.node.name} took {duration:.2f}s")
-
-
 # Additional fixtures for FS.6 backtesting system
 @pytest.fixture
 def fs6_sample_data():
     """Sample data for FS.6 backtesting system tests"""
     rng = np.random.default_rng(42)
     dates = pd.date_range(start='2023-01-01', periods=252, freq='D')
-    
     data = []
     price = 100.0
     for i, date in enumerate(dates):
@@ -271,7 +242,6 @@ def fs6_sample_data():
         low = price * (1 - rng.uniform(0.005, 0.02))
         open_price = low + (high - low) * rng.uniform(0.2, 0.8)
         volume = int(rng.uniform(800000, 1500000))
-        
         data.append({
             'Date': date,
             'Open': round(open_price, 2),
@@ -280,12 +250,9 @@ def fs6_sample_data():
             'Close': round(price, 2),
             'Volume': volume
         })
-    
     df = pd.DataFrame(data)
     df.set_index('Date', inplace=True)
     return df
-
-
 @pytest.fixture
 def mock_backtest_persistence():
     """Mock persistence layer for backtesting tests"""
@@ -296,13 +263,10 @@ def mock_backtest_persistence():
     mock_persistence.load_trades.return_value = []
     mock_persistence.load_equity_curve.return_value = pd.DataFrame()
     return mock_persistence
-
-
 @pytest.fixture
 def sample_trade_records():
     """Sample trade records for testing"""
     from datetime import datetime, timezone
-    
     rng = np.random.default_rng(42)
     trades = []
     for i in range(10):
@@ -321,10 +285,7 @@ def sample_trade_records():
             'slippage': 15.0
         }
         trades.append(trade)
-    
     return trades
-
-
 @pytest.fixture
 def coverage_requirements():
     """Define coverage requirements for different modules"""

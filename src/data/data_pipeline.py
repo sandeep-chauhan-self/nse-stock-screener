@@ -1,10 +1,8 @@
 """
 Data Infrastructure & ETL Pipeline for NSE Stock Screener.
-
 This module provides a comprehensive data pipeline that ensures reliable,
 adjusted, and validated data feeds for downstream analysis. It implements
 the FS.2 requirement for robust data infrastructure.
-
 Key Features:
 - Multi-source data ingestion (NSE Bhavcopy, NSE APIs, yfinance)
 - Intelligent caching with Parquet/Feather storage
@@ -12,7 +10,6 @@ Key Features:
 - Data validation and health checks
 - Metadata tracking and lineage
 """
-
 import logging
 import hashlib
 import sqlite3
@@ -23,24 +20,17 @@ from dataclasses import dataclass
 from enum import Enum
 import pandas as pd
 import numpy as np
-
 from ..common.interfaces import StockData
 from ..common.config import get_config
 from .fetchers_impl import YahooDataFetcher, NSEDataFetcher, NSEBhavcopyFetcher
 from .cache import ParquetCache
 from .validation import EnhancedDataValidator as DataValidator
-
-
 logger = logging.getLogger(__name__)
-
-
 class DataSource(Enum):
     """Supported data sources."""
     YAHOO_FINANCE = "yahoo"
     NSE_API = "nse_api"
     NSE_BHAVCOPY = "nse_bhavcopy"
-
-
 @dataclass
 class DatasetMetadata(object):
     """Metadata for tracking dataset versions and freshness."""
@@ -54,10 +44,8 @@ class DatasetMetadata(object):
     checksum: str
     record_count: int
     validation_status: str
-    validation_issues: list[str]
+    validation_issues: List[str]
     version: str
-
-
 @dataclass
 class CorporateAction(object):
     """Corporate action adjustment data."""
@@ -67,20 +55,15 @@ class CorporateAction(object):
     ratio: Optional[float]
     amount: Optional[float]
     adjustment_factor: float
-
-
 class DataPipeline(object):
     """
     Main data pipeline orchestrator.
-
     Coordinates data ingestion, caching, validation, and corporate action
     adjustments across multiple data sources.
     """
-
     def __init__(self, cache_dir: Optional[Path] = None) -> None:
         """
         Initialize data pipeline.
-
         Args:
             cache_dir: Directory for data cache (defaults to config)
         """
@@ -93,9 +76,7 @@ class DataPipeline(object):
         self._init_cache()
         self._init_validator()
         self._init_metadata_db()
-
         logger.info(f"Data pipeline initialized with cache at {self.cache_dir}")
-
     def _init_fetchers(self) -> None:
         """Initialize data fetchers for each source."""
         self.fetchers = {
@@ -103,20 +84,16 @@ class DataPipeline(object):
             DataSource.NSE_API: NSEDataFetcher(),
             DataSource.NSE_BHAVCOPY: NSEBhavcopyFetcher()
         }
-
     def _init_cache(self) -> None:
         """Initialize caching layer."""
         self.cache = ParquetCache(self.cache_dir / "market_data")
-
     def _init_validator(self) -> None:
         """Initialize data validator."""
         self.validator = DataValidator()
-
     def _init_metadata_db(self) -> None:
         """Initialize metadata database."""
         self.metadata_db = self.cache_dir / "metadata.db"
         self._create_metadata_tables()
-
     def _create_metadata_tables(self) -> None:
         """Create metadata tables if they don't exist."""
         with sqlite3.connect(self.metadata_db) as conn:
@@ -138,7 +115,6 @@ class DataPipeline(object):
                     UNIQUE(symbol, source, data_type, start_date, end_date)
                 )
             """)
-
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS corporate_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,17 +128,15 @@ class DataPipeline(object):
                     UNIQUE(symbol, ex_date, action_type)
                 )
             """)
-
     def get_data(self,
                  symbol: str,
                  start: date,
                  end: date,
                  adjusted: bool = True,
                  force_refresh: bool = False,
-                 preferred_sources: Optional[list[DataSource]] = None) -> Optional[StockData]:
+                 preferred_sources: Optional[List[DataSource]] = None) -> Optional[StockData]:
         """
         Get stock data with intelligent source selection and caching.
-
         Args:
             symbol: Stock symbol
             start: Start date
@@ -170,13 +144,12 @@ class DataPipeline(object):
             adjusted: Whether to return adjusted prices
             force_refresh: Force refresh from source
             preferred_sources: Preferred data sources in order
-
         Returns:
             StockData with OHLCV data and metadata
         """
         stock_data = None
-        
         try:
+
             # Check cache first (unless force refresh)
             if not force_refresh:
                 cached_data = self._get_cached_data(symbol, start, end, adjusted)
@@ -188,9 +161,11 @@ class DataPipeline(object):
             if stock_data is None:
                 data, source_used = self._fetch_from_sources(symbol, start, end, preferred_sources)
                 if data is not None:
+
                     # Validate data
                     validation_result = self.validator.validate(data, symbol)
                     if validation_result['status'] != 'error':
+
                         # Apply corporate actions if requested
                         if adjusted:
                             data = self._apply_corporate_actions(symbol, data)
@@ -216,16 +191,12 @@ class DataPipeline(object):
                         logger.error(f"Data validation failed for {symbol}: {validation_result['issues']}")
                 else:
                     logger.warning(f"Failed to fetch data for {symbol}")
-
         except Exception as e:
             logger.error(f"Error getting data for {symbol}: {e}")
-
         return stock_data
-
     def _get_cached_data(self, symbol: str, start: date, end: date, adjusted: bool) -> Optional[StockData]:
         """Get data from cache if available and fresh."""
         stock_data = None
-        
         try:
             data_type = 'adjusted' if adjusted else 'raw'
 
@@ -238,16 +209,16 @@ class DataPipeline(object):
                     AND validation_status != 'error'
                     ORDER BY updated_at DESC LIMIT 1
                 """, (symbol, data_type, start.isoformat(), end.isoformat()))
-
                 metadata = cursor.fetchone()
                 if metadata:
+
                     # Check if data is fresh (within T+1)
                     updated_at = datetime.fromisoformat(metadata[7])
                     if datetime.now() - updated_at <= timedelta(days=1):
+
                         # Load from cache
                         cache_key = f"{symbol}_{data_type}_{start}_{end}"
                         cached_df = self.cache.get(cache_key)
-
                         if cached_df is not None:
                             stock_data = StockData(
                                 symbol=symbol,
@@ -257,41 +228,34 @@ class DataPipeline(object):
                             )
                     else:
                         logger.info(f"Cached data for {symbol} is stale")
-
         except Exception as e:
             logger.warning(f"Error accessing cache for {symbol}: {e}")
-
         return stock_data
-
     def _fetch_from_sources(self,
                            symbol: str,
                            start: date,
                            end: date,
-                           preferred_sources: Optional[list[DataSource]] = None
-                           ) -> tuple[Optional[pd.DataFrame], Optional[DataSource]]:
+                           preferred_sources: Optional[List[DataSource]] = None
+                           ) -> Tuple[Optional[pd.DataFrame], Optional[DataSource]]:
         """Fetch data from multiple sources with fallback."""
         if preferred_sources is None:
             preferred_sources = [DataSource.YAHOO_FINANCE, DataSource.NSE_API, DataSource.NSE_BHAVCOPY]
-
         for source in preferred_sources:
             try:
                 fetcher = self.fetchers[source]
                 logger.info(f"Attempting to fetch {symbol} from {source.value}")
-
                 data = fetcher.fetch(symbol, start, end)
                 if data is not None and not data.empty:
                     logger.info(f"Successfully fetched {symbol} from {source.value}")
                     return data, source
-
             except Exception as e:
                 logger.warning(f"Failed to fetch {symbol} from {source.value}: {e}")
                 continue
-
         return None, None
-
     def _apply_corporate_actions(self, symbol: str, data: pd.DataFrame) -> pd.DataFrame:
         """Apply corporate action adjustments to raw data."""
         try:
+
             # Get corporate actions for symbol
             with sqlite3.connect(self.metadata_db) as conn:
                 cursor = conn.execute("""
@@ -300,13 +264,11 @@ class DataPipeline(object):
                     WHERE symbol = ?
                     ORDER BY ex_date ASC
                 """, (symbol,))
-
                 actions = cursor.fetchall()
-
             if not actions:
+
                 # No adjustments needed
                 return data
-
             adjusted_data = data.copy()
 
             # Apply adjustments chronologically
@@ -315,7 +277,6 @@ class DataPipeline(object):
 
                 # Apply adjustment to all dates before ex-date
                 mask = adjusted_data.index.date < ex_date
-
                 price_columns = ['Open', 'High', 'Low', 'Close']
                 for col in price_columns:
                     if col in adjusted_data.columns:
@@ -324,14 +285,12 @@ class DataPipeline(object):
                 # Adjust volume (inverse of price adjustment)
                 if 'Volume' in adjusted_data.columns:
                     adjusted_data.loc[mask, 'Volume'] /= adjustment_factor
-
             return adjusted_data
-
         except Exception as e:
             logger.warning(f"Error applying corporate actions for {symbol}: {e}")
+
             # Return original data if adjustment fails
             return data
-
     def _cache_data(self,
                    symbol: str,
                    data: pd.DataFrame,
@@ -339,14 +298,14 @@ class DataPipeline(object):
                    start: date,
                    end: date,
                    adjusted: bool,
-                   validation_result: dict[str, Any]) -> None:
+                   validation_result: Dict[str, Any]) -> None:
         """Cache data and update metadata."""
         try:
             data_type = 'adjusted' if adjusted else 'raw'
             cache_key = f"{symbol}_{data_type}_{start}_{end}"
 
             # Cache the data
-            self.cache.set(cache_key, data)
+            self.cache.Set[str](cache_key, data)
 
             # Calculate checksum
             checksum = DataPipeline._calculate_checksum(data)
@@ -366,19 +325,16 @@ class DataPipeline(object):
                 validation_issues=validation_result.get('issues', []),
                 version="1.0"
             )
-
             self._save_metadata(metadata)
-
         except Exception as e:
             logger.error(f"Error caching data for {symbol}: {e}")
-
     @staticmethod
     def _calculate_checksum(data: pd.DataFrame) -> str:
         """Calculate data checksum for integrity validation."""
+
         # Create a stable string representation
         data_str = data.to_string()
         return hashlib.md5(data_str.encode()).hexdigest()
-
     def _save_metadata(self, metadata: DatasetMetadata) -> None:
         """Save metadata to database."""
         with sqlite3.connect(self.metadata_db) as conn:
@@ -395,8 +351,7 @@ class DataPipeline(object):
                 metadata.checksum, metadata.record_count, metadata.validation_status,
                 ','.join(metadata.validation_issues), metadata.version
             ))
-
-    def update_corporate_actions(self, actions: list[CorporateAction]) -> None:
+    def update_corporate_actions(self, actions: List[CorporateAction]) -> None:
         """Update corporate actions for symbols."""
         with sqlite3.connect(self.metadata_db) as conn:
             for action in actions:
@@ -409,7 +364,6 @@ class DataPipeline(object):
                     action.ratio, action.amount, action.adjustment_factor,
                     datetime.now().isoformat()
                 ))
-
     def get_data_freshness_report(self) -> pd.DataFrame:
         """Generate data freshness report."""
         with sqlite3.connect(self.metadata_db) as conn:
@@ -420,8 +374,7 @@ class DataPipeline(object):
                 ORDER BY updated_at DESC
             """
             return pd.read_sql_query(query, conn)
-
-    def run_health_checks(self) -> dict[str, Any]:
+    def run_health_checks(self) -> Dict[str, Any]:
         """Run comprehensive health checks on data pipeline."""
         results = {
             'timestamp': datetime.now().isoformat(),
@@ -431,7 +384,6 @@ class DataPipeline(object):
         # Check 1: Data freshness
         freshness_df = self.get_data_freshness_report()
         stale_data = freshness_df[freshness_df['days_since_update'] > 1]
-
         results['checks'].append({
             'name': 'Data Freshness',
             'status': 'PASS' if len(stale_data) == 0 else 'WARN',
@@ -446,7 +398,6 @@ class DataPipeline(object):
                 WHERE validation_status = 'error'
             """)
             error_count = cursor.fetchone()[0]
-
         results['checks'].append({
             'name': 'Validation Errors',
             'status': 'PASS' if error_count == 0 else 'FAIL',
@@ -457,58 +408,47 @@ class DataPipeline(object):
         # Check 3: Cache health
         cache_size = sum(f.stat().st_size for f in self.cache_dir.rglob('*') if f.is_file())
         cache_size_mb = cache_size / (1024 * 1024)
-
         results['checks'].append({
             'name': 'Cache Health',
+
             # Warn if > 1GB
             'status': 'PASS' if cache_size_mb < 1000 else 'WARN',
             'message': f"Cache size: {cache_size_mb:.1f} MB",
             'details': {'size_mb': cache_size_mb, 'path': str(self.cache_dir)}
         })
-
         return results
-
-
 class DataPipelineManager(object):
     """High-level manager for data pipeline operations."""
-
     def __init__(self) -> None:
         """Initialize pipeline manager."""
         self.pipeline = DataPipeline()
-
-    def daily_batch_update(self, symbols: list[str]) -> dict[str, Any]:
-        """Run daily batch update for list of symbols."""
+    def daily_batch_update(self, symbols: List[str]) -> Dict[str, Any]:
+        """Run daily batch update for List[str] of symbols."""
         results = {
             'started_at': datetime.now().isoformat(),
             'symbols_processed': 0,
             'symbols_failed': 0,
             'errors': []
         }
-
         end_date = date.today()
+
         # Get last 30 days
         start_date = end_date - timedelta(days=30)
-
         for symbol in symbols:
             try:
+
                 # Fetch both raw and adjusted data
                 raw_data = self.pipeline.get_data(symbol, start_date, end_date, adjusted=False, force_refresh=True)
                 adjusted_data = self.pipeline.get_data(symbol, start_date, end_date, adjusted=True, force_refresh=True)
-
                 if raw_data and adjusted_data:
                     results['symbols_processed'] += 1
                     logger.info(f"Successfully updated {symbol}")
                 else:
                     results['symbols_failed'] += 1
                     results['errors'].append(f"Failed to fetch data for {symbol}")
-
             except Exception as e:
                 results['symbols_failed'] += 1
                 results['errors'].append(f"Error processing {symbol}: {str(e)}")
                 logger.error(f"Error in batch update for {symbol}: {e}")
-
         results['completed_at'] = datetime.now().isoformat()
         return results
-
-
-

@@ -1,42 +1,33 @@
 """
 Validation rules implementation - specific validation logic for data quality checks.
-
 This module contains concrete implementations of validation rules:
 - FreshnessCheck: Validates data timeliness (T+1 compliance)
 - EnhancedConsistencyCheck: Validates OHLCV relationships and data integrity
 - CrossProviderDiscrepancyCheck: Detects discrepancies between data sources
 """
-
 import logging
 from datetime import datetime
 from typing import Optional, Any
-
 import numpy as np
 import pandas as pd
-
 from .validation_core import ValidationRule, ValidationIssue, ValidationLevel
 
 # Configure logger
 logger = logging.getLogger(__name__)
-
-
 class FreshnessCheck(ValidationRule):
     """Check if data is fresh (updated recently) - FS.2 T+1 compliance."""
-
     def __init__(self, max_age_hours: int = 25, market_hours_only: bool = True, **kwargs) -> None:
         super().__init__("freshness_check", **kwargs)
+
         # T+1 + buffer
         self.max_age_hours = max_age_hours
         self.market_hours_only = market_hours_only
-
-    def validate(self, symbol: str, data: pd.DataFrame, metadata: dict[str, Any] = None) -> list[ValidationIssue]:
+    def validate(self, symbol: str, data: pd.DataFrame, metadata: Dict[str, Any] = None) -> List[ValidationIssue]:
         """Check data freshness against T+1 requirement."""
         issues = []
         metadata = metadata or {}
-
         if data.empty:
             return self._create_empty_data_issue(symbol)
-
         current_time = datetime.now()
 
         # Check last data point date
@@ -45,10 +36,8 @@ class FreshnessCheck(ValidationRule):
         # Check metadata freshness if available
         if metadata:
             issues.extend(self._validate_metadata_freshness(symbol, metadata, current_time))
-
         return issues
-
-    def _create_empty_data_issue(self, symbol: str) -> list[ValidationIssue]:
+    def _create_empty_data_issue(self, symbol: str) -> List[ValidationIssue]:
         """Create issue for empty data."""
         return [ValidationIssue(
             rule_name=self.name,
@@ -57,30 +46,31 @@ class FreshnessCheck(ValidationRule):
             symbol=symbol,
             metadata={"issue_type": "empty_data"}
         )]
-
     def _validate_data_freshness(self, symbol: str, data: pd.DataFrame,
-                                 current_time: datetime) -> list[ValidationIssue]:
+                                 current_time: datetime) -> List[ValidationIssue]:
         """Validate freshness of data based on Date column."""
         issues = []
-
         try:
+
             # Check for missing Date column
             if 'Date' not in data.columns:
                 issues.extend(self._create_missing_date_issue(symbol))
             else:
+
                 # Validate date column format
                 date_validation = self._validate_date_column(symbol, data)
                 if date_validation:
                     issues.extend(date_validation)
                 else:
+
                     # Check for valid dates
                     latest_date = self._get_latest_date(data)
                     if latest_date is None:
                         issues.extend(self._create_no_valid_dates_issue(symbol))
                     else:
+
                         # Calculate age and check threshold
                         issues.extend(self._check_age_threshold(symbol, latest_date, current_time))
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -89,10 +79,8 @@ class FreshnessCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"issue_type": "freshness_check_error", "error": str(e)}
             ))
-
         return issues
-
-    def _create_missing_date_issue(self, symbol: str) -> list[ValidationIssue]:
+    def _create_missing_date_issue(self, symbol: str) -> List[ValidationIssue]:
         """Create issue for missing Date column."""
         return [ValidationIssue(
             rule_name=self.name,
@@ -101,8 +89,7 @@ class FreshnessCheck(ValidationRule):
             symbol=symbol,
             metadata={"issue_type": "missing_date_column"}
         )]
-
-    def _validate_date_column(self, symbol: str, data: pd.DataFrame) -> Optional[list[ValidationIssue]]:
+    def _validate_date_column(self, symbol: str, data: pd.DataFrame) -> Optional[List[ValidationIssue]]:
         """Validate and convert date column."""
         if not pd.api.types.is_datetime64_any_dtype(data['Date']):
             try:
@@ -117,18 +104,15 @@ class FreshnessCheck(ValidationRule):
                     metadata={"issue_type": "date_parse_error", "error": str(e)}
                 )]
         return None
-
     def _get_latest_date(self, data: pd.DataFrame) -> Optional[datetime]:
         """Get the latest date from the data."""
         if pd.api.types.is_datetime64_any_dtype(data['Date']):
             dates = data['Date']
         else:
             dates = pd.to_datetime(data['Date'])
-
         latest_date = dates.max()
         return latest_date.to_pydatetime() if not pd.isna(latest_date) else None
-
-    def _create_no_valid_dates_issue(self, symbol: str) -> list[ValidationIssue]:
+    def _create_no_valid_dates_issue(self, symbol: str) -> List[ValidationIssue]:
         """Create issue for no valid dates."""
         return [ValidationIssue(
             rule_name=self.name,
@@ -137,13 +121,11 @@ class FreshnessCheck(ValidationRule):
             symbol=symbol,
             metadata={"issue_type": "no_valid_dates"}
         )]
-
     def _check_age_threshold(self, symbol: str, latest_date: datetime,
-                             current_time: datetime) -> list[ValidationIssue]:
+                             current_time: datetime) -> List[ValidationIssue]:
         """Check if data age exceeds threshold."""
         issues = []
         age_hours = (current_time - latest_date).total_seconds() / 3600
-
         if age_hours > self.max_age_hours:
             level = ValidationLevel.CRITICAL if age_hours > 48 else ValidationLevel.WARNING
             issues.append(ValidationIssue(
@@ -157,14 +139,11 @@ class FreshnessCheck(ValidationRule):
                     "max_age_hours": self.max_age_hours
                 }
             ))
-
         return issues
-
-    def _validate_metadata_freshness(self, symbol: str, metadata: dict[str, Any],
-                                     current_time: datetime) -> list[ValidationIssue]:
+    def _validate_metadata_freshness(self, symbol: str, metadata: Dict[str, Any],
+                                     current_time: datetime) -> List[ValidationIssue]:
         """Validate freshness based on metadata timestamp."""
         issues = []
-
         try:
             if 'last_updated' in metadata:
                 if isinstance(metadata['last_updated'], str):
@@ -173,9 +152,7 @@ class FreshnessCheck(ValidationRule):
                     last_updated = metadata['last_updated']
                 else:
                     return []
-
                 age_hours = (current_time - last_updated).total_seconds() / 3600
-
                 if age_hours > self.max_age_hours:
                     issues.append(ValidationIssue(
                         rule_name=self.name,
@@ -187,25 +164,19 @@ class FreshnessCheck(ValidationRule):
                             "last_updated": last_updated.isoformat()
                         }
                     ))
-
         except Exception:
+
             # Ignore metadata parsing errors
             pass
-
         return issues
-
-
 class EnhancedConsistencyCheck(ValidationRule):
     """Enhanced data consistency validation with comprehensive OHLCV checks."""
-
     def __init__(self, **kwargs) -> None:
         super().__init__("enhanced_consistency_check", **kwargs)
-
-    def validate(self, symbol: str, data: pd.DataFrame, metadata: dict[str, Any] = None) -> list[ValidationIssue]:
+    def validate(self, symbol: str, data: pd.DataFrame, metadata: Dict[str, Any] = None) -> List[ValidationIssue]:
         """Perform comprehensive consistency validation."""
         issues = []
         metadata = metadata or {}
-
         if data.empty:
             return [ValidationIssue(
                 rule_name=self.name,
@@ -228,17 +199,13 @@ class EnhancedConsistencyCheck(ValidationRule):
 
         # Validate data sequence
         issues.extend(self._validate_data_sequence(symbol, data))
-
         return issues
-
-    def _validate_ohlc_relationships(self, symbol: str, data: pd.DataFrame) -> list[ValidationIssue]:
+    def _validate_ohlc_relationships(self, symbol: str, data: pd.DataFrame) -> List[ValidationIssue]:
         """Validate OHLC price relationships."""
         issues = []
-
         try:
             required_cols = ['Open', 'High', 'Low', 'Close']
             missing_cols = [col for col in required_cols if col not in data.columns]
-
             if missing_cols:
                 issues.append(ValidationIssue(
                     rule_name=self.name,
@@ -287,7 +254,6 @@ class EnhancedConsistencyCheck(ValidationRule):
                             symbol=symbol,
                             metadata={f"invalid_{col.lower()}_count": int(count)}
                         ))
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -296,13 +262,10 @@ class EnhancedConsistencyCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"error": str(e)}
             ))
-
         return issues
-
-    def _validate_volume_consistency(self, symbol: str, data: pd.DataFrame) -> list[ValidationIssue]:
+    def _validate_volume_consistency(self, symbol: str, data: pd.DataFrame) -> List[ValidationIssue]:
         """Validate volume data consistency."""
         issues = []
-
         try:
             if 'Volume' not in data.columns:
                 issues.append(ValidationIssue(
@@ -342,6 +305,7 @@ class EnhancedConsistencyCheck(ValidationRule):
             # Check for volume spikes (potential data errors)
             if len(data) > 5:
                 volume_ma = data['Volume'].rolling(5).mean()
+
                 # 10x average
                 volume_spikes = (data['Volume'] > volume_ma * 10).sum()
                 if volume_spikes > 0:
@@ -352,7 +316,6 @@ class EnhancedConsistencyCheck(ValidationRule):
                         symbol=symbol,
                         metadata={"volume_spikes": int(volume_spikes)}
                     ))
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -361,20 +324,15 @@ class EnhancedConsistencyCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"error": str(e)}
             ))
-
         return issues
-
-    def _validate_completeness(self, symbol: str, data: pd.DataFrame) -> list[ValidationIssue]:
+    def _validate_completeness(self, symbol: str, data: pd.DataFrame) -> List[ValidationIssue]:
         """Validate data completeness."""
         issues = []
-
         try:
             critical_cols = ['Date', 'Open', 'High', 'Low', 'Close']
             important_cols = ['Volume']
-
             issues.extend(self._validate_critical_columns(symbol, data, critical_cols))
             issues.extend(self._validate_important_columns(symbol, data, important_cols))
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -383,14 +341,11 @@ class EnhancedConsistencyCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"error": str(e)}
             ))
-
         return issues
-
     def _validate_critical_columns(self, symbol: str, data: pd.DataFrame,
-                                   critical_cols: list[str]) -> list[ValidationIssue]:
+                                   critical_cols: List[str]) -> List[ValidationIssue]:
         """Validate critical columns for completeness."""
         issues = []
-
         for col in critical_cols:
             if col not in data.columns:
                 issues.append(ValidationIssue(
@@ -410,14 +365,11 @@ class EnhancedConsistencyCheck(ValidationRule):
                         symbol=symbol,
                         metadata={"missing_critical_data": missing_stats}
                     ))
-
         return issues
-
     def _validate_important_columns(self, symbol: str, data: pd.DataFrame,
-                                    important_cols: list[str]) -> list[ValidationIssue]:
+                                    important_cols: List[str]) -> List[ValidationIssue]:
         """Validate important columns for completeness."""
         issues = []
-
         for col in important_cols:
             if col in data.columns:
                 missing_stats = self._get_missing_stats(data[col])
@@ -435,25 +387,20 @@ class EnhancedConsistencyCheck(ValidationRule):
                         symbol=symbol,
                         metadata={"missing_important_data": missing_stats}
                     ))
-
         return issues
-
-    def _get_missing_stats(self, series: pd.Series) -> dict[str, float]:
+    def _get_missing_stats(self, series: pd.Series) -> Dict[str, float]:
         """Get statistics about missing values in a series."""
         missing_count = series.isna().sum()
         total_count = len(series)
         missing_pct = (missing_count / total_count * 100) if total_count > 0 else 0
-
         return {
             "count": int(missing_count),
             "total": int(total_count),
             "pct": missing_pct
         }
-
-    def _detect_price_anomalies(self, symbol: str, data: pd.DataFrame) -> list[ValidationIssue]:
+    def _detect_price_anomalies(self, symbol: str, data: pd.DataFrame) -> List[ValidationIssue]:
         """Detect price anomalies and extreme movements."""
         issues = []
-
         try:
             if 'Close' not in data.columns or len(data) < 2:
                 return issues
@@ -466,7 +413,6 @@ class EnhancedConsistencyCheck(ValidationRule):
             # 50% change
             extreme_threshold = 0.5
             extreme_moves = (abs(returns) > extreme_threshold).sum()
-
             if extreme_moves > 0:
                 max_return = returns.abs().max()
                 extreme_msg = (f"Extreme price movements: {extreme_moves} days with "
@@ -482,7 +428,6 @@ class EnhancedConsistencyCheck(ValidationRule):
                         "threshold": extreme_threshold
                     }
                 ))
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -491,13 +436,10 @@ class EnhancedConsistencyCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"error": str(e)}
             ))
-
         return issues
-
-    def _validate_data_sequence(self, symbol: str, data: pd.DataFrame) -> list[ValidationIssue]:
+    def _validate_data_sequence(self, symbol: str, data: pd.DataFrame) -> List[ValidationIssue]:
         """Validate data sequence and ordering."""
         issues = []
-
         try:
             if 'Date' not in data.columns or len(data) < 2:
                 return issues
@@ -529,7 +471,6 @@ class EnhancedConsistencyCheck(ValidationRule):
                     symbol=symbol,
                     metadata={"data_ordering": "not_sorted"}
                 ))
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -538,53 +479,41 @@ class EnhancedConsistencyCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"error": str(e)}
             ))
-
         return issues
-
-
 class CrossProviderDiscrepancyCheck(ValidationRule):
     """Detect discrepancies between multiple data providers."""
-
     def __init__(self, tolerance_pct: float = 2.0, **kwargs) -> None:
         super().__init__("cross_provider_discrepancy", **kwargs)
         self.tolerance_pct = tolerance_pct
-
-    def validate_multiple_sources(self, symbol: str, data_sources: dict[str, pd.DataFrame]) -> list[ValidationIssue]:
+    def validate_multiple_sources(self, symbol: str, data_sources: Dict[str, pd.DataFrame]) -> List[ValidationIssue]:
         """Validate data across multiple sources."""
         issues = []
-
         if len(data_sources) < 2:
             return issues
 
         # Compare all pairs of sources
-        sources = list(data_sources.keys())
+        sources = List[str](data_sources.keys())
         for i in range(len(sources)):
             for j in range(i + 1, len(sources)):
                 source1, source2 = sources[i], sources[j]
                 data1, data2 = data_sources[source1], data_sources[source2]
-
                 pair_issues = self._compare_data_sources(symbol, source1, data1,
                                                         source2, data2)
                 issues.extend(pair_issues)
-
         return issues
-
-    def validate(self, symbol: str, data: pd.DataFrame, metadata: dict[str, Any] = None) -> list[ValidationIssue]:
+    def validate(self, symbol: str, data: pd.DataFrame, metadata: Dict[str, Any] = None) -> List[ValidationIssue]:
         """Standard validation interface - requires multiple sources in metadata."""
         if not metadata or 'additional_sources' not in metadata:
             return []
-
         data_sources = {'primary': data}
         data_sources.update(metadata['additional_sources'])
-
         return self.validate_multiple_sources(symbol, data_sources)
-
     def _compare_data_sources(self, symbol: str, source1: str, data1: pd.DataFrame,
-                              source2: str, data2: pd.DataFrame) -> list[ValidationIssue]:
+                              source2: str, data2: pd.DataFrame) -> List[ValidationIssue]:
         """Compare two data sources for discrepancies."""
         issues = []
-
         try:
+
             # Find common dates
             common_dates = self._find_common_dates(data1, data2)
             if not common_dates:
@@ -610,7 +539,6 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
             volume_issues = self._check_volume_discrepancies(symbol, source1, filtered_data1,
                                                             source2, filtered_data2)
             issues.extend(volume_issues)
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -619,88 +547,71 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"error": str(e)}
             ))
-
         return issues
-
-    def _extract_dates(self, data: pd.DataFrame) -> Optional[list[datetime]]:
+    def _extract_dates(self, data: pd.DataFrame) -> Optional[List[datetime]]:
         """Extract dates from dataframe."""
         if 'Date' not in data.columns:
             return None
-
         try:
             dates = self._convert_to_datetime(data)
             return dates.dropna().dt.to_pydatetime().tolist() if dates is not None else None
         except Exception:
             return None
-
     def _convert_to_datetime(self, data: pd.DataFrame) -> Optional[pd.Series]:
         """Convert Date column to datetime."""
         if pd.api.types.is_datetime64_any_dtype(data['Date']):
             return data['Date']
         else:
             return pd.to_datetime(data['Date'], errors='coerce')
-
-    def _filter_to_common_dates(self, data: pd.DataFrame, common_dates: list[datetime]) -> pd.DataFrame:
+    def _filter_to_common_dates(self, data: pd.DataFrame, common_dates: List[datetime]) -> pd.DataFrame:
         """Filter dataframe to common dates."""
         if 'Date' not in data.columns:
             return data.copy()
-
         try:
             if pd.api.types.is_datetime64_any_dtype(data['Date']):
                 dates = data['Date']
             else:
                 dates = pd.to_datetime(data['Date'], errors='coerce')
-
-            common_dates_set = set(common_dates)
+            common_dates_set = Set[str](common_dates)
             mask = dates.dt.to_pydatetime().isin(common_dates_set)
             return data[mask].copy()
         except Exception:
             return data.copy()
-
-    def _find_common_dates(self, data1: pd.DataFrame, data2: pd.DataFrame) -> list[datetime]:
+    def _find_common_dates(self, data1: pd.DataFrame, data2: pd.DataFrame) -> List[datetime]:
         """Find common dates between two dataframes."""
         dates1 = self._extract_dates(data1)
         dates2 = self._extract_dates(data2)
-
         if not dates1 or not dates2:
             return []
-
-        common = set(dates1) & set(dates2)
+        common = Set[str](dates1) & Set[str](dates2)
         return sorted(common)
-
     def _check_price_discrepancies(self, symbol: str, source1: str, data1: pd.DataFrame,
-                                   source2: str, data2: pd.DataFrame) -> list[ValidationIssue]:
+                                   source2: str, data2: pd.DataFrame) -> List[ValidationIssue]:
         """Check for price discrepancies between sources."""
         issues = []
-
         try:
             price_cols = ['Open', 'High', 'Low', 'Close']
             price_cols = [col for col in price_cols if col in data1.columns and col in data2.columns]
-
             if not price_cols:
                 return issues
 
             # Merge on Date for comparison
             merged = pd.merge(data1, data2, on='Date', suffixes=('_1', '_2'), how='inner', validate='one_to_one')
-
             if merged.empty:
                 return issues
-
             for col in price_cols:
                 col1, col2 = f"{col}_1", f"{col}_2"
                 if col1 in merged.columns and col2 in merged.columns:
+
                     # Calculate percentage difference
                     diff_pct = abs((merged[col1] - merged[col2]) / merged[col1] * 100)
                     discrepant = diff_pct > self.tolerance_pct
-
                     discrepant_count = discrepant.sum()
                     if discrepant_count > 0:
                         discrepancy_pct = (discrepant_count / len(merged)) * 100
                         max_diff = diff_pct.max()
                         avg_diff = diff_pct[discrepant].mean()
-
                         level = ValidationLevel.CRITICAL if discrepancy_pct > 10 else ValidationLevel.WARNING
-
                         message_text = (f"Price discrepancies between {source1} and {source2}: "
                                        f"{discrepant_count}/{len(merged)} days ({discrepancy_pct:.1f}%) "
                                        f"exceed {self.tolerance_pct}% tolerance "
@@ -722,7 +633,6 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
                                 "tolerance": self.tolerance_pct
                             }
                         ))
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -731,14 +641,11 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"error": str(e)}
             ))
-
         return issues
-
     def _check_volume_discrepancies(self, symbol: str, source1: str, data1: pd.DataFrame,
-                                    source2: str, data2: pd.DataFrame) -> list[ValidationIssue]:
+                                    source2: str, data2: pd.DataFrame) -> List[ValidationIssue]:
         """Check for volume discrepancies between sources."""
         issues = []
-
         try:
             if 'Volume' not in data1.columns or 'Volume' not in data2.columns:
                 return issues
@@ -749,7 +656,6 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
             # Merge on Date for comparison
             volume_data = pd.merge(data1[['Date', 'Volume']], data2[['Date', 'Volume']],
                                   on='Date', suffixes=('_1', '_2'), how='inner', validate='one_to_one')
-
             if volume_data.empty:
                 return issues
 
@@ -757,19 +663,15 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
             vol1_nonzero = volume_data['Volume_1'] != 0
             vol2_nonzero = volume_data['Volume_2'] != 0
             both_nonzero = vol1_nonzero & vol2_nonzero
-
             if both_nonzero.any():
                 valid_data = volume_data[both_nonzero]
                 diff_pct = abs((valid_data['Volume_1'] - valid_data['Volume_2']) / valid_data['Volume_1'] * 100)
                 discrepant = diff_pct > volume_tolerance
-
                 discrepant_count = discrepant.sum()
                 if discrepant_count > 0:
                     discrepancy_pct = (discrepant_count / len(valid_data)) * 100
                     max_diff = diff_pct.max()
-
                     level = ValidationLevel.WARNING if discrepancy_pct <= 25 else ValidationLevel.ERROR
-
                     volume_message = (f"Volume discrepancies between {source1} and {source2}: "
                                      f"{discrepant_count}/{len(volume_data)} days ({discrepancy_pct:.1f}%) "
                                      f"exceed {volume_tolerance}% tolerance (max: {max_diff:.1f}%)")
@@ -790,7 +692,6 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
                             }
                         }
                     ))
-
         except Exception as e:
             issues.append(ValidationIssue(
                 rule_name=self.name,
@@ -799,5 +700,4 @@ class CrossProviderDiscrepancyCheck(ValidationRule):
                 symbol=symbol,
                 metadata={"error": str(e)}
             ))
-
         return issues

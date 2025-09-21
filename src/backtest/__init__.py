@@ -1,6 +1,5 @@
 """
 Backtesting engine package for NSE Stock Screener
-
 Provides robust backtesting capabilities with:
 - IBacktester interface implementations
 - Historical strategy validation
@@ -10,5 +9,4 @@ Provides robust backtesting capabilities with:
 
 # Placeholder for backtesting implementations
 # Will be populated as backtest modules are migrated to this package
-
 __all__ = []

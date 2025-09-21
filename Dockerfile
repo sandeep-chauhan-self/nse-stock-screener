@@ -3,7 +3,7 @@
 # Based on official Python slim image with security updates
 
 # ===== BUILD STAGE =====
-FROM python:3.11-slim as builder
+FROM python:3.11-slim@sha256:f4d3dd703e0b25e2bcf9ffd8b13f8c78b61c6b3df8a61893f102ba7f0e2e6ac1 AS builder
 
 # Set build arguments for security
 ARG DEBIAN_FRONTEND=noninteractive
@@ -35,7 +35,7 @@ RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements-security.txt
 
 # ===== PRODUCTION STAGE =====
-FROM python:3.11-slim as production
+FROM python:3.11-slim@sha256:f4d3dd703e0b25e2bcf9ffd8b13f8c78b61c6b3df8a61893f102ba7f0e2e6ac1 AS production
 
 # Metadata labels for security tracking
 LABEL maintainer="NSE Stock Screener Team" \
@@ -47,7 +47,7 @@ LABEL maintainer="NSE Stock Screener Team" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Install only essential runtime dependencies and security updates
+# Install only essential runtime dependencies and security updates, and create non-root user
 RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     ca-certificates \
@@ -55,11 +55,9 @@ RUN apt-get update && apt-get install -y \
     dumb-init \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
-    && apt-get autoremove -y
-
-# Create non-root user with minimal privileges
-RUN groupadd -r nse-screener --gid=1000 && \
-    useradd -r -g nse-screener --uid=1000 \
+    && apt-get autoremove -y \
+    && groupadd -r nse-screener --gid=1000 \
+    && useradd -r -g nse-screener --uid=1000 \
     --home-dir=/app --shell=/bin/bash \
     --comment="NSE Screener Application User" \
     nse-screener
@@ -93,11 +91,9 @@ COPY --chown=nse-screener:nse-screener scripts/ ./scripts/
 COPY --chown=nse-screener:nse-screener docker/entrypoint.sh ./
 COPY --chown=nse-screener:nse-screener docker/healthcheck.py ./
 
-# Make scripts executable
-RUN chmod +x entrypoint.sh healthcheck.py
-
-# Security: Remove unnecessary packages and clean up
-RUN apt-get autoremove -y && \
+# Make scripts executable and clean up in single RUN layer
+RUN chmod +x entrypoint.sh healthcheck.py && \
+    apt-get autoremove -y && \
     apt-get autoclean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache
 
