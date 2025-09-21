@@ -24,8 +24,13 @@ except ImportError:
     from config import SystemConfig, get_config
 
 # Import shared enums and interfaces from centralized location
-from .common.enums import PositionStatus, StopType
-from .common.interfaces import IRiskManager, RiskAssessment
+try:
+    from .common.enums import PositionStatus, StopType
+    from .common.interfaces import IRiskManager, RiskAssessment
+except ImportError:
+    # Fallback for direct execution
+    from common.enums import PositionStatus, StopType
+    from common.interfaces import IRiskManager, RiskAssessment
 
 @dataclass
 class Position:
