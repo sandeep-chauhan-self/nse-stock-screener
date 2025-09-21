@@ -18,7 +18,7 @@ import hashlib
 import sqlite3
 from pathlib import Path
 from datetime import datetime, date, timedelta
-from typing import Optional, Dict, Any, Union, Tuple, List
+from typing import Optional, Any, Union
 from dataclasses import dataclass
 from enum import Enum
 import pandas as pd
@@ -54,7 +54,7 @@ class DatasetMetadata(object):
     checksum: str
     record_count: int
     validation_status: str
-    validation_issues: List[str]
+    validation_issues: list[str]
     version: str
 
 
@@ -159,14 +159,14 @@ class DataPipeline(object):
                  end: date,
                  adjusted: bool = True,
                  force_refresh: bool = False,
-                 preferred_sources: Optional[List[DataSource]] = None) -> Optional[StockData]:
+                 preferred_sources: Optional[list[DataSource]] = None) -> Optional[StockData]:
         """
         Get stock data with intelligent source selection and caching.
 
         Args:
             symbol: Stock symbol
             start: Start date
-            end: End date
+            end: Date
             adjusted: Whether to return adjusted prices
             force_refresh: Force refresh from source
             preferred_sources: Preferred data sources in order
@@ -174,56 +174,58 @@ class DataPipeline(object):
         Returns:
             StockData with OHLCV data and metadata
         """
+        stock_data = None
+        
         try:
             # Check cache first (unless force refresh)
             if not force_refresh:
                 cached_data = self._get_cached_data(symbol, start, end, adjusted)
                 if cached_data is not None:
                     logger.info(f"Retrieved {symbol} from cache")
-                    return cached_data
+                    stock_data = cached_data
 
-            # Fetch from sources
-            data, source_used = self._fetch_from_sources(symbol, start, end, preferred_sources)
-            if data is None:
-                logger.warning(f"Failed to fetch data for {symbol}")
-                return None
+            # Fetch from sources if not cached
+            if stock_data is None:
+                data, source_used = self._fetch_from_sources(symbol, start, end, preferred_sources)
+                if data is not None:
+                    # Validate data
+                    validation_result = self.validator.validate(data, symbol)
+                    if validation_result['status'] != 'error':
+                        # Apply corporate actions if requested
+                        if adjusted:
+                            data = self._apply_corporate_actions(symbol, data)
 
-            # Validate data
-            validation_result = self.validator.validate(data, symbol)
-            if validation_result['status'] == 'error':
-                logger.error(f"Data validation failed for {symbol}: {validation_result['issues']}")
-                return None
+                        # Cache the data
+                        self._cache_data(symbol, data, source_used, start, end, adjusted, validation_result)
 
-            # Apply corporate actions if requested
-            if adjusted:
-                data = self._apply_corporate_actions(symbol, data)
-
-            # Cache the data
-            self._cache_data(symbol, data, source_used, start, end, adjusted, validation_result)
-
-            # Create StockData object
-            stock_data = StockData(
-                symbol=symbol,
-                data=data,
-                metadata={
-                    'source': source_used.value,
-                    'adjusted': adjusted,
-                    'validation': validation_result,
-                    'start_date': start.isoformat(),
-                    'end_date': end.isoformat()
-                },
-                timestamp=datetime.now()
-            )
-
-            logger.info(f"Successfully retrieved {symbol} from {source_used.value}")
-            return stock_data
+                        # Create StockData object
+                        stock_data = StockData(
+                            symbol=symbol,
+                            data=data,
+                            metadata={
+                                'source': source_used.value,
+                                'adjusted': adjusted,
+                                'validation': validation_result,
+                                'start_date': start.isoformat(),
+                                'end_date': end.isoformat()
+                            },
+                            timestamp=datetime.now()
+                        )
+                        logger.info(f"Successfully retrieved {symbol} from {source_used.value}")
+                    else:
+                        logger.error(f"Data validation failed for {symbol}: {validation_result['issues']}")
+                else:
+                    logger.warning(f"Failed to fetch data for {symbol}")
 
         except Exception as e:
             logger.error(f"Error getting data for {symbol}: {e}")
-            return None
+
+        return stock_data
 
     def _get_cached_data(self, symbol: str, start: date, end: date, adjusted: bool) -> Optional[StockData]:
         """Get data from cache if available and fresh."""
+        stock_data = None
+        
         try:
             data_type = 'adjusted' if adjusted else 'raw'
 
@@ -238,38 +240,35 @@ class DataPipeline(object):
                 """, (symbol, data_type, start.isoformat(), end.isoformat()))
 
                 metadata = cursor.fetchone()
-                if not metadata:
-                    return None
+                if metadata:
+                    # Check if data is fresh (within T+1)
+                    updated_at = datetime.fromisoformat(metadata[7])
+                    if datetime.now() - updated_at <= timedelta(days=1):
+                        # Load from cache
+                        cache_key = f"{symbol}_{data_type}_{start}_{end}"
+                        cached_df = self.cache.get(cache_key)
 
-                # Check if data is fresh (within T+1)
-                updated_at = datetime.fromisoformat(metadata[7])  # updated_at column
-                if datetime.now() - updated_at > timedelta(days=1):
-                    logger.info(f"Cached data for {symbol} is stale")
-                    return None
-
-            # Load from cache
-            cache_key = f"{symbol}_{data_type}_{start}_{end}"
-            cached_df = self.cache.get(cache_key)
-
-            if cached_df is not None:
-                return StockData(
-                    symbol=symbol,
-                    data=cached_df,
-                    metadata={'source': 'cache', 'adjusted': adjusted},
-                    timestamp=updated_at
-                )
-
-            return None
+                        if cached_df is not None:
+                            stock_data = StockData(
+                                symbol=symbol,
+                                data=cached_df,
+                                metadata={'source': 'cache', 'adjusted': adjusted},
+                                timestamp=updated_at
+                            )
+                    else:
+                        logger.info(f"Cached data for {symbol} is stale")
 
         except Exception as e:
             logger.warning(f"Error accessing cache for {symbol}: {e}")
-            return None
+
+        return stock_data
 
     def _fetch_from_sources(self,
                            symbol: str,
                            start: date,
                            end: date,
-                           preferred_sources: Optional[List[DataSource]] = None) -> Tuple[Optional[pd.DataFrame], Optional[DataSource]]:
+                           preferred_sources: Optional[list[DataSource]] = None
+                           ) -> tuple[Optional[pd.DataFrame], Optional[DataSource]]:
         """Fetch data from multiple sources with fallback."""
         if preferred_sources is None:
             preferred_sources = [DataSource.YAHOO_FINANCE, DataSource.NSE_API, DataSource.NSE_BHAVCOPY]
@@ -305,7 +304,8 @@ class DataPipeline(object):
                 actions = cursor.fetchall()
 
             if not actions:
-                return data  # No adjustments needed
+                # No adjustments needed
+                return data
 
             adjusted_data = data.copy()
 
@@ -329,7 +329,8 @@ class DataPipeline(object):
 
         except Exception as e:
             logger.warning(f"Error applying corporate actions for {symbol}: {e}")
-            return data  # Return original data if adjustment fails
+            # Return original data if adjustment fails
+            return data
 
     def _cache_data(self,
                    symbol: str,
@@ -338,7 +339,7 @@ class DataPipeline(object):
                    start: date,
                    end: date,
                    adjusted: bool,
-                   validation_result: Dict[str, Any]) -> None:
+                   validation_result: dict[str, Any]) -> None:
         """Cache data and update metadata."""
         try:
             data_type = 'adjusted' if adjusted else 'raw'
@@ -348,7 +349,7 @@ class DataPipeline(object):
             self.cache.set(cache_key, data)
 
             # Calculate checksum
-            checksum = self._calculate_checksum(data)
+            checksum = DataPipeline._calculate_checksum(data)
 
             # Update metadata
             metadata = DatasetMetadata(
@@ -371,7 +372,8 @@ class DataPipeline(object):
         except Exception as e:
             logger.error(f"Error caching data for {symbol}: {e}")
 
-    def _calculate_checksum(self, data: pd.DataFrame) -> str:
+    @staticmethod
+    def _calculate_checksum(data: pd.DataFrame) -> str:
         """Calculate data checksum for integrity validation."""
         # Create a stable string representation
         data_str = data.to_string()
@@ -394,8 +396,8 @@ class DataPipeline(object):
                 ','.join(metadata.validation_issues), metadata.version
             ))
 
-    def update_corporate_actions(self, symbol: str, actions: List[CorporateAction]) -> None:
-        """Update corporate actions for a symbol."""
+    def update_corporate_actions(self, actions: list[CorporateAction]) -> None:
+        """Update corporate actions for symbols."""
         with sqlite3.connect(self.metadata_db) as conn:
             for action in actions:
                 conn.execute("""
@@ -419,7 +421,7 @@ class DataPipeline(object):
             """
             return pd.read_sql_query(query, conn)
 
-    def run_health_checks(self) -> Dict[str, Any]:
+    def run_health_checks(self) -> dict[str, Any]:
         """Run comprehensive health checks on data pipeline."""
         results = {
             'timestamp': datetime.now().isoformat(),
@@ -458,7 +460,8 @@ class DataPipeline(object):
 
         results['checks'].append({
             'name': 'Cache Health',
-            'status': 'PASS' if cache_size_mb < 1000 else 'WARN',  # Warn if > 1GB
+            # Warn if > 1GB
+            'status': 'PASS' if cache_size_mb < 1000 else 'WARN',
             'message': f"Cache size: {cache_size_mb:.1f} MB",
             'details': {'size_mb': cache_size_mb, 'path': str(self.cache_dir)}
         })
@@ -466,14 +469,14 @@ class DataPipeline(object):
         return results
 
 
-class DataPipelineManager:
+class DataPipelineManager(object):
     """High-level manager for data pipeline operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize pipeline manager."""
         self.pipeline = DataPipeline()
 
-    def daily_batch_update(self, symbols: List[str]) -> Dict[str, Any]:
+    def daily_batch_update(self, symbols: list[str]) -> dict[str, Any]:
         """Run daily batch update for list of symbols."""
         results = {
             'started_at': datetime.now().isoformat(),
@@ -483,7 +486,8 @@ class DataPipelineManager:
         }
 
         end_date = date.today()
-        start_date = end_date - timedelta(days=30)  # Get last 30 days
+        # Get last 30 days
+        start_date = end_date - timedelta(days=30)
 
         for symbol in symbols:
             try:
