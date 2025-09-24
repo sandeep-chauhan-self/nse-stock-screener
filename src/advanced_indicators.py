@@ -10,6 +10,16 @@ from typing import Dict, Optional, Tuple, Any
 import warnings
 warnings.filterwarnings('ignore')
 
+# Import our constants and core functionality
+from constants import (
+    INDICATOR_CONSTANTS, DATA_QUALITY_CONSTANTS, TRADING_CONSTANTS,
+    ERROR_MESSAGES, SUCCESS_MESSAGES
+)
+from core import (
+    DataFetcher, DataValidator, PerformanceUtils, get_weekly_data,
+    calculate_relative_strength
+)
+
 class AdvancedIndicator:
     """
     Comprehensive technical indicators calculator with focus on:
@@ -19,22 +29,197 @@ class AdvancedIndicator:
     - Volatility (ATR, normalized)
     - Relative strength vs index
     - Volume profile approximation
+    - Weekly confirmation signals
+    - 15+ technical indicators with robust error handling
     """
     
-    def __init__(self, nifty_symbol: str = "^NSEI"):
-        self.nifty_symbol = nifty_symbol
+    def __init__(self, nifty_symbol: Optional[str] = None):
+        self.nifty_symbol = nifty_symbol or TRADING_CONSTANTS['NIFTY_SYMBOL']
         self.nifty_data = None
         
     def get_nifty_data(self, period: str = "1y") -> Optional[pd.DataFrame]:
         """Fetch NIFTY data for relative strength calculations"""
         try:
             if self.nifty_data is None:
-                nifty = yf.Ticker(self.nifty_symbol)
-                self.nifty_data = nifty.history(period=period)
+                self.nifty_data = DataFetcher.fetch_stock_data(self.nifty_symbol, period)
             return self.nifty_data
         except Exception as e:
             print(f"Warning: Could not fetch NIFTY data: {e}")
             return None
+    
+    def compute_bollinger_bands(self, data: pd.DataFrame, period: Optional[int] = None, std_dev: Optional[float] = None) -> Dict[str, float]:
+        """
+        Compute Bollinger Bands indicators:
+        - Upper band, lower band, position within bands
+        """
+        period = period or INDICATOR_CONSTANTS['BB_PERIOD']
+        std_dev = std_dev or INDICATOR_CONSTANTS['BB_STD']
+        
+        if len(data) < period + 5:
+            return {'bb_upper': np.nan, 'bb_lower': np.nan, 'bb_position': np.nan, 'bb_width': np.nan}
+        
+        close = data['Close']
+        sma = close.rolling(period).mean()
+        std = close.rolling(period).std()
+        
+        bb_upper = sma + (std * std_dev)
+        bb_lower = sma - (std * std_dev)
+        
+        current_price = close.iloc[-1]
+        current_upper = bb_upper.iloc[-1]
+        current_lower = bb_lower.iloc[-1]
+        current_sma = sma.iloc[-1]
+        
+        # Position within bands (0 = lower band, 0.5 = middle, 1 = upper band)
+        bb_position = (current_price - current_lower) / (current_upper - current_lower) if (current_upper - current_lower) > 0 else 0.5
+        
+        # Band width (normalized by price)
+        bb_width = (current_upper - current_lower) / current_sma if current_sma > 0 else 0
+        
+        return {
+            'bb_upper': round(current_upper, 2) if not np.isnan(current_upper) else np.nan,
+            'bb_lower': round(current_lower, 2) if not np.isnan(current_lower) else np.nan,
+            'bb_position': round(bb_position, 3) if not np.isnan(bb_position) else np.nan,
+            'bb_width': round(bb_width, 4) if not np.isnan(bb_width) else np.nan
+        }
+    
+    def compute_stochastic(self, data: pd.DataFrame, k_period: Optional[int] = None, d_period: Optional[int] = None) -> Dict[str, float]:
+        """
+        Compute Stochastic Oscillator (%K and %D):
+        - %K: Current position within high-low range
+        - %D: Moving average of %K
+        """
+        k_period = k_period or INDICATOR_CONSTANTS['STOCH_K_PERIOD']
+        d_period = d_period or INDICATOR_CONSTANTS['STOCH_D_PERIOD']
+        
+        if len(data) < k_period + d_period:
+            return {'stoch_k': np.nan, 'stoch_d': np.nan}
+        
+        high = data['High']
+        low = data['Low']
+        close = data['Close']
+        
+        # Calculate %K
+        lowest_low = low.rolling(k_period).min()
+        highest_high = high.rolling(k_period).max()
+        
+        stoch_k = 100 * (close - lowest_low) / (highest_high - lowest_low)
+        stoch_k = stoch_k.fillna(50)  # Handle division by zero
+        
+        # Calculate %D (SMA of %K)
+        stoch_d = stoch_k.rolling(d_period).mean()
+        
+        return {
+            'stoch_k': round(stoch_k.iloc[-1], 2) if not np.isnan(stoch_k.iloc[-1]) else np.nan,
+            'stoch_d': round(stoch_d.iloc[-1], 2) if not np.isnan(stoch_d.iloc[-1]) else np.nan
+        }
+    
+    def compute_williams_r(self, data: pd.DataFrame, period: Optional[int] = None) -> Dict[str, float]:
+        """
+        Compute Williams %R indicator:
+        - Momentum indicator showing position within high-low range
+        """
+        period = period or INDICATOR_CONSTANTS['WILLIAMS_R_PERIOD']
+        
+        if len(data) < period + 5:
+            return {'williams_r': np.nan}
+        
+        high = data['High']
+        low = data['Low']
+        close = data['Close']
+        
+        # Calculate Williams %R
+        highest_high = high.rolling(period).max()
+        lowest_low = low.rolling(period).min()
+        
+        williams_r = -100 * (highest_high - close) / (highest_high - lowest_low)
+        williams_r = williams_r.fillna(-50)  # Handle division by zero
+        
+        return {
+            'williams_r': round(williams_r.iloc[-1], 2) if not np.isnan(williams_r.iloc[-1]) else np.nan
+        }
+    
+    def compute_cci(self, data: pd.DataFrame, period: Optional[int] = None) -> Dict[str, float]:
+        """
+        Compute Commodity Channel Index (CCI):
+        - Measures deviation from typical price
+        """
+        period = period or INDICATOR_CONSTANTS['CCI_PERIOD']
+        
+        if len(data) < period + 5:
+            return {'cci': np.nan}
+        
+        # Typical Price
+        typical_price = (data['High'] + data['Low'] + data['Close']) / 3
+        
+        # Simple Moving Average of Typical Price
+        sma_tp = typical_price.rolling(period).mean()
+        
+        # Mean Deviation
+        mad = typical_price.rolling(period).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=False)
+        
+        # CCI calculation
+        cci = (typical_price - sma_tp) / (0.015 * mad)
+        
+        return {
+            'cci': round(cci.iloc[-1], 2) if not np.isnan(cci.iloc[-1]) else np.nan
+        }
+    
+    def compute_mfi(self, data: pd.DataFrame, period: Optional[int] = None) -> Dict[str, float]:
+        """
+        Compute Money Flow Index (MFI):
+        - Volume-weighted RSI
+        """
+        period = period or INDICATOR_CONSTANTS['MFI_PERIOD']
+        
+        if len(data) < period + 5:
+            return {'mfi': np.nan}
+        
+        # Typical Price
+        typical_price = (data['High'] + data['Low'] + data['Close']) / 3
+        
+        # Money Flow
+        money_flow = typical_price * data['Volume']
+        
+        # Positive and Negative Money Flow
+        positive_mf = money_flow.where(typical_price > typical_price.shift(1), 0)
+        negative_mf = money_flow.where(typical_price < typical_price.shift(1), 0)
+        
+        # Money Flow Ratio
+        positive_mf_sum = positive_mf.rolling(period).sum()
+        negative_mf_sum = negative_mf.rolling(period).sum()
+        
+        money_ratio = positive_mf_sum / negative_mf_sum
+        money_ratio = money_ratio.replace([np.inf, -np.inf], 100)  # Handle division by zero
+        
+        # MFI
+        mfi = 100 - (100 / (1 + money_ratio))
+        
+        return {
+            'mfi': round(mfi.iloc[-1], 2) if not np.isnan(mfi.iloc[-1]) else np.nan
+        }
+    
+    def compute_price_oscillators(self, data: pd.DataFrame) -> Dict[str, float]:
+        """
+        Compute additional price oscillators:
+        - ROC (Rate of Change)
+        - Price momentum
+        """
+        if len(data) < 15:
+            return {'roc_10': np.nan, 'price_momentum_5': np.nan}
+        
+        close = data['Close']
+        
+        # Rate of Change (10-period)
+        roc_10 = ((close - close.shift(10)) / close.shift(10) * 100) if len(close) > 10 else pd.Series([np.nan])
+        
+        # Price momentum (5-period)
+        price_momentum_5 = (close - close.shift(5)) if len(close) > 5 else pd.Series([np.nan])
+        
+        return {
+            'roc_10': round(roc_10.iloc[-1], 2) if not roc_10.empty and not np.isnan(roc_10.iloc[-1]) else np.nan,
+            'price_momentum_5': round(price_momentum_5.iloc[-1], 2) if not price_momentum_5.empty and not np.isnan(price_momentum_5.iloc[-1]) else np.nan
+        }
     
     def compute_volume_signals(self, data: pd.DataFrame) -> Dict[str, float]:
         """
@@ -59,7 +244,7 @@ class AdvancedIndicator:
         
         # Volume trend (5-day slope)
         if len(volume) >= 5:
-            recent_volume = volume.tail(5).values
+            recent_volume = volume.tail(5).values.astype(float)
             x = np.arange(len(recent_volume))
             vol_trend = np.polyfit(x, recent_volume, 1)[0] / vol_mean20 if vol_mean20 > 0 else 0
         else:
@@ -419,19 +604,17 @@ class AdvancedIndicator:
             print(f"Warning: Could not compute weekly indicators for {symbol}: {e}")
             return {'weekly_rsi_trend': 0, 'weekly_macd_bullish': False, 'weekly_vol_trend': 0}
     
-    def compute_all_indicators(self, symbol: str, period: str = "6mo") -> Dict[str, Any]:
+    def compute_all_indicators(self, symbol: str, period: str = "6mo") -> Optional[Dict[str, Any]]:
         """
         Compute all indicators for a given symbol
         Returns comprehensive dictionary of all technical indicators
         """
         try:
-            # All symbols should already have the .NS suffix
-            # Fetch data
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period=period)
+            # Use DataFetcher from core
+            data = DataFetcher.fetch_stock_data(symbol, period)
             
-            if data is None or len(data) < 50 or data.empty:
-                print(f"Insufficient data for {symbol}")
+            if data is None or not DataValidator.validate_ohlcv_data(data, min_points=50):
+                print(f"{ERROR_MESSAGES['INSUFFICIENT_DATA']} for {symbol}")
                 return None
             
             # Compute all indicator groups
@@ -442,6 +625,14 @@ class AdvancedIndicator:
             relative_strength = self.compute_relative_strength(data, symbol)
             volume_profile = self.compute_volume_profile_proxy(data)
             weekly_confirm = self.compute_weekly_confirmation(symbol)
+            
+            # Compute additional indicators
+            bollinger_bands = self.compute_bollinger_bands(data)
+            stochastic = self.compute_stochastic(data)
+            williams_r = self.compute_williams_r(data)
+            cci = self.compute_cci(data)
+            mfi = self.compute_mfi(data)
+            oscillators = self.compute_price_oscillators(data)
             
             # Combine all indicators
             all_indicators = {
@@ -454,7 +645,13 @@ class AdvancedIndicator:
                 **volatility_signals,
                 **relative_strength,
                 **volume_profile,
-                **weekly_confirm
+                **weekly_confirm,
+                **bollinger_bands,
+                **stochastic,
+                **williams_r,
+                **cci,
+                **mfi,
+                **oscillators
             }
             
             return all_indicators

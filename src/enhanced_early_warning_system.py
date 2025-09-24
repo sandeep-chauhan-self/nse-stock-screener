@@ -1,6 +1,19 @@
 """
 Enhanced Early Warning System for Stock Analysis
-Advanced version with comprehensive technical indicators, composite scoring,
+Advanced version with comprehensive technical            # Add debugging info
+            print(f"Market regime: {self.market_regime}, type: {type(self.market_regime)}")
+            print(f"Market regime from composite_scorer module: {type(self.scorer.regime_adjustments).__name__}")
+            print(f"cs_regime: {cs_regime}, type: {type(cs_regime)}")
+            
+            # Ensure the market regime is of the correct type for CompositeScorer
+            # This handles the case when types don't match despite having the same values
+            from composite_scorer import MarketRegime as CSMarketRegime
+            regime_name = self.market_regime.name
+            cs_regime = CSMarketRegime[regime_name]
+            
+            print(f"cs_regime after conversion: {cs_regime}, type: {type(cs_regime)}")
+            
+            # Compute composite score, composite scoring,
 risk management, and backtesting capabilities.
 """
 
@@ -10,37 +23,36 @@ import time
 import argparse
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
-from enum import Enum
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-# Add the current directory to Python path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+# Import our centralized constants and core functionality
+from constants import (
+    MarketRegime, TRADING_CONSTANTS, RISK_CONSTANTS, DISPLAY_CONSTANTS,
+    ERROR_MESSAGES, SUCCESS_MESSAGES, FILE_CONSTANTS, PROJECT_ROOT_PATH
+)
+from core import (
+    StockLoader, DataFetcher, MarketRegimeDetector, PathManager,
+    DisplayUtils, RateLimiter
+)
 
 # Import our enhanced modules
 from advanced_indicators import AdvancedIndicator
-# We'll import CompositeScorer at runtime to avoid circular import issues
-# from composite_scorer import CompositeScorer
+from composite_scorer import CompositeScorer
 from advanced_backtester import AdvancedBacktester, BacktestConfig
 from risk_manager import RiskManager, RiskConfig
-
-class MarketRegime(Enum):
-    """Market regime classification"""
-    BULLISH = "bullish"
-    BEARISH = "bearish"
-    SIDEWAYS = "sideways"
-    HIGH_VOLATILITY = "high_volatility"
+from signal_generator import SignalGenerator
+from forecast_engine import ForecastEngine
 
 class EnhancedEarlyWarningSystem:
     """Enhanced Early Warning System with advanced technical analysis"""
     
     def __init__(self, custom_stocks: Optional[List[str]] = None, 
                  input_file: Optional[str] = None,
-                 batch_size: int = 50, timeout: int = 10):
+                 batch_size: Optional[int] = None, timeout: Optional[int] = None):
         """
         Initialize Enhanced Early Warning System
         
@@ -50,138 +62,49 @@ class EnhancedEarlyWarningSystem:
             batch_size: Number of stocks to process in each batch
             timeout: Seconds to wait between batches
         """
-        self.batch_size = batch_size
-        self.timeout = timeout
+        self.batch_size = batch_size or TRADING_CONSTANTS['DEFAULT_BATCH_SIZE']
+        self.timeout = timeout or TRADING_CONSTANTS['DEFAULT_TIMEOUT']
         self.market_regime = MarketRegime.SIDEWAYS
         self.analysis_results = []
         
-        # Initialize output directories
-        self.output_dirs = self._setup_output_directories()
+        # Initialize output directories using PathManager
+        self.output_dirs = PathManager.setup_output_directories()
         
-        # Load stock symbols
-        self.nse_stocks = self._load_stock_symbols(custom_stocks, input_file)
+        # Load stock symbols using StockLoader
+        self.nse_stocks = StockLoader.load_stocks(custom_stocks, input_file)
         
         # Initialize enhanced engines
         self.indicators_engine = AdvancedIndicator()
-        
-        # Import CompositeScorer here to avoid circular imports
-        from composite_scorer import CompositeScorer
         self.scorer = CompositeScorer()
+        self.signal_generator = SignalGenerator()
+        self.forecast_engine = ForecastEngine()
         
-        # Create risk config
+        # Create risk config with defaults
         risk_config = RiskConfig(
-            max_portfolio_risk=0.02,  # 2% portfolio risk
-            max_position_size=0.005,  # 0.5% per position
-            max_daily_loss=0.01,  # 1% max daily loss
-            max_concurrent_positions=10
+            max_portfolio_risk=RISK_CONSTANTS['DEFAULT_MAX_PORTFOLIO_RISK'],
+            max_position_size=RISK_CONSTANTS['DEFAULT_MAX_POSITION_SIZE'],
+            max_daily_loss=RISK_CONSTANTS['DEFAULT_MAX_DAILY_LOSS'],
+            max_concurrent_positions=RISK_CONSTANTS['DEFAULT_MAX_CONCURRENT_POSITIONS']
         )
         
         # Initialize risk manager with config
         self.risk_manager = RiskManager(
-            initial_capital=1000000,  # 10 Lakh initial capital
+            initial_capital=TRADING_CONSTANTS['DEFAULT_INITIAL_CAPITAL'],
             config=risk_config
         )
         
-        print(f"✅ Enhanced Early Warning System initialized")
+        print(f"{SUCCESS_MESSAGES['SYSTEM_INITIALIZED']}")
         print(f"📊 Loaded {len(self.nse_stocks)} stocks for analysis")
         print(f"🔧 Batch size: {self.batch_size}, Timeout: {self.timeout}s")
     
-    def _setup_output_directories(self) -> Dict[str, str]:
-        """Setup output directories for reports and charts"""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        parent_dir = os.path.dirname(base_dir)
-        
-        output_dirs = {
-            'reports': os.path.join(parent_dir, 'output', 'reports'),
-            'charts': os.path.join(parent_dir, 'output', 'charts'),
-            'backtests': os.path.join(parent_dir, 'output', 'backtests')
-        }
-        
-        # Create directories if they don't exist
-        for dir_path in output_dirs.values():
-            os.makedirs(dir_path, exist_ok=True)
-        
-        return output_dirs
-    
-    def _load_stock_symbols(self, custom_stocks: Optional[List[str]], 
-                           input_file: Optional[str]) -> List[str]:
-        """Load stock symbols from various sources"""
-        if custom_stocks:
-            print(f"Using custom stock list: {len(custom_stocks)} stocks")
-            # Ensure all custom stocks have .NS suffix
-            stocks = [s if s.endswith('.NS') else f"{s}.NS" for s in custom_stocks]
-            return stocks
-        
-        if input_file and os.path.exists(input_file):
-            print(f"Loading stocks from file: {input_file}")
-            with open(input_file, 'r') as f:
-                stocks = [line.strip() for line in f if line.strip()]
-            # Ensure all stocks from file have .NS suffix
-            stocks = [s if s.endswith('.NS') else f"{s}.NS" for s in stocks]
-            return stocks
-        
-        # Default: load from NSE symbols file
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        parent_dir = os.path.dirname(base_dir)
-        default_file = os.path.join(parent_dir, 'data', 'nse_only_symbols.txt')
-        
-        if os.path.exists(default_file):
-            print(f"Loading stocks from default file: {default_file}")
-            with open(default_file, 'r') as f:
-                stocks = [line.strip() for line in f if line.strip()]
-            # Ensure all stocks from default file have .NS suffix
-            stocks = [s if s.endswith('.NS') else f"{s}.NS" for s in stocks]
-            return stocks[:35]  # Limit to first 35 for testing
-        
-        # Fallback: sample stocks
-        print("Using fallback sample stocks")
-        return ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS']
-    
-    def detect_market_regime(self) -> MarketRegime:
-        """Detect current market regime using NIFTY data"""
-        try:
-            print("🌍 Detecting market regime...")
-            
-            # Fetch NIFTY data
-            nifty = yf.Ticker("^NSEI")
-            data = nifty.history(period="3mo")
-            
-            if data.empty:
-                print("⚠️ Could not fetch NIFTY data, using SIDEWAYS regime")
-                return MarketRegime.SIDEWAYS
-            
-            # Calculate regime indicators
-            close = data['Close']
-            returns = close.pct_change().dropna()
-            volatility = returns.std() * np.sqrt(252)  # Annualized volatility
-            
-            # Calculate trend (20-day vs 50-day MA)
-            ma20 = close.rolling(20).mean().iloc[-1]
-            ma50 = close.rolling(50).mean().iloc[-1]
-            current_price = close.iloc[-1]
-            
-            # Determine regime
-            if volatility > 0.25:  # 25% annual volatility threshold
-                regime = MarketRegime.HIGH_VOLATILITY
-            elif current_price > ma20 > ma50:
-                regime = MarketRegime.BULLISH
-            elif current_price < ma20 < ma50:
-                regime = MarketRegime.BEARISH
-            else:
-                regime = MarketRegime.SIDEWAYS
-            
-            print(f"📈 Market regime detected: {regime.value.upper()}")
-            print(f"📊 NIFTY volatility: {volatility:.1%}")
-            return regime
-            
-        except Exception as e:
-            print(f"⚠️ Error detecting market regime: {e}")
-            return MarketRegime.SIDEWAYS
-            
     def analyze_single_stock(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Analyze a single stock with full indicator suite"""
+        """Analyze a single stock with full indicator suite and optimal entry calculation"""
         try:
             print(f"Analyzing {symbol}...")
+            
+            # Get historical data for optimal entry calculation
+            from core import DataFetcher
+            historical_data = DataFetcher.fetch_stock_data(symbol, period="1y")
             
             # Get all technical indicators
             indicators = self.indicators_engine.compute_all_indicators(symbol)
@@ -191,8 +114,8 @@ class EnhancedEarlyWarningSystem:
                 return None
             
             # Add debugging info
-            print(f"Market regime: {self.market_regime}, type: {type(self.market_regime)}")
-            print(f"Market regime from composite_scorer module: {type(self.scorer.regime_adjustments).__name__}")
+            #print(f"Market regime: {self.market_regime}, type: {type(self.market_regime)}")
+            #print(f"Market regime from composite_scorer module: {type(self.scorer.regime_adjustments).__name__}")
             
             # Ensure the market regime is of the correct type for CompositeScorer
             # This handles the case when types don't match despite having the same values
@@ -207,29 +130,99 @@ class EnhancedEarlyWarningSystem:
                 print(f"Failed to compute score for {symbol}")
                 return None
             
-            # Check risk management constraints
-            entry_price = indicators.get('current_price', 0)
-            atr = indicators.get('atr', entry_price * 0.02)  # Default 2% if no ATR
-            stop_loss = entry_price - (2.0 * atr)  # 2x ATR stop
-            
-            can_enter, risk_reason, quantity, risk_amount = self.risk_manager.can_enter_position(
-                symbol, entry_price, stop_loss, scoring_result['composite_score']
+            # Generate trading signal
+            # Use the original MarketRegime from constants for signal_generator
+            signal_result = self.signal_generator.generate_signal(
+                scoring_result['composite_score'], 
+                indicators, 
+                self.market_regime  # Use original regime instead of cs_regime
             )
             
-            # Add risk management info to result
-            scoring_result['risk_management'] = {
-                'can_enter_position': can_enter,
-                'risk_reason': risk_reason,
-                'suggested_quantity': quantity,
-                'risk_amount': round(risk_amount, 2),
-                'suggested_stop_loss': round(stop_loss, 2),
-                'risk_reward_ratio': round(abs(entry_price - stop_loss) / (entry_price * 0.025), 2)  # Assume 2.5% TP
-            }
+            # Enhanced risk management with entry/stop/target calculations
+            entry_price = indicators.get('current_price', 0)
+            
+            # Debug output for signal generation
+            print(f"Debug - {symbol}: Score={scoring_result['composite_score']}, Signal={signal_result['signal']}, Confidence={signal_result.get('confidence', 'N/A')}, Entry=${entry_price:.1f}")
+            
+            # For BUY signals, calculate detailed entry/stop/target with Monte Carlo
+            if signal_result['signal'] == 'BUY':
+                # Enhanced position analysis with Monte Carlo optimal entry
+                position_analysis = self.risk_manager.enhanced_position_analysis(
+                    symbol=symbol, 
+                    signal=signal_result['signal'], 
+                    composite_score=scoring_result['composite_score'], 
+                    indicators=indicators, 
+                    signal_data=signal_result,
+                    historical_data=historical_data,
+                    market_regime=self.market_regime
+                )
+                
+                # Use optimal entry for duration estimation
+                optimal_entry = position_analysis.get('entry_value', entry_price)
+                target_value = position_analysis.get('target_value', entry_price * 1.05)
+                
+                # Estimate duration using optimal entry and target
+                duration_estimate = self.forecast_engine.estimate_duration(
+                    symbol, optimal_entry, target_value, indicators
+                )
+                
+                # Extract values from position_analysis (includes Monte Carlo results)
+                risk_info = {
+                    'can_enter_position': position_analysis['can_enter_position'],
+                    'risk_reason': position_analysis['risk_reason'],
+                    'suggested_quantity': position_analysis['position_size'],
+                    'risk_amount': position_analysis['risk_amount'],
+                    'entry_value': position_analysis['entry_value'],
+                    'stop_value': position_analysis['stop_value'],
+                    'target_value': position_analysis['target_value'],
+                    'risk_reward_ratio': position_analysis['risk_reward_ratio'],
+                    'position_size_pct': position_analysis['portfolio_impact']['position_weight'],
+                    'max_loss_amount': position_analysis['risk_amount'],
+                    # Monte Carlo specific fields
+                    'hit_probability': position_analysis.get('hit_probability', 0.0),
+                    'indicator_confidence': position_analysis.get('indicator_confidence', 0.0),
+                    'monte_carlo_paths': position_analysis.get('monte_carlo_paths', 0),
+                    'fallback_used': position_analysis.get('fallback_used', 'Unknown'),
+                    'data_confidence': position_analysis.get('data_confidence', 'UNKNOWN'),
+                    'calculation_method': position_analysis.get('calculation_method', 'ATR-based'),
+                    'execution_time_ms': position_analysis.get('execution_time_ms', 0.0)
+                }
+            else:
+                # For HOLD/AVOID signals, basic risk info
+                atr = indicators.get('atr', entry_price * 0.02)
+                stop_loss = entry_price - (2.0 * atr)
+                
+                can_enter, risk_reason, quantity, risk_amount = self.risk_manager.can_enter_position(
+                    symbol, entry_price, stop_loss, scoring_result['composite_score']
+                )
+                
+                risk_info = {
+                    'can_enter_position': can_enter,
+                    'risk_reason': risk_reason,
+                    'suggested_quantity': quantity,
+                    'risk_amount': round(risk_amount, 2),
+                    'entry_value': entry_price,
+                    'stop_value': round(stop_loss, 2),
+                    'target_value': None,
+                    'risk_reward_ratio': None,
+                    'position_size_pct': None,
+                    'max_loss_amount': None
+                }
+                
+                # No duration estimate for non-BUY signals
+                duration_estimate = None
+            
+            # Add new components to result
+            scoring_result['signal_info'] = signal_result
+            scoring_result['duration_estimate'] = duration_estimate
+            scoring_result['risk_management'] = risk_info
             
             return scoring_result
             
         except Exception as e:
             print(f"Error analyzing {symbol}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def filter_and_rank_results(self, results: List[Dict[str, Any]]) -> Dict[str, List[Dict]]:
@@ -370,13 +363,12 @@ class EnhancedEarlyWarningSystem:
             plt.tight_layout()
             
             # Save chart
-            chart_path = os.path.join(self.output_dirs['charts'], 
-                                    f"{symbol.replace('.NS', '')}_enhanced_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            chart_path = FILE_CONSTANTS['CHARTS_DIR'] / f"{symbol.replace('.NS', '')}_enhanced_chart.png"
+            plt.savefig(str(chart_path), dpi=300, bbox_inches='tight')
             plt.close()
             
             print(f"Enhanced chart saved: {chart_path}")
-            return chart_path
+            return str(chart_path)
             
         except Exception as e:
             print(f"Error generating enhanced chart for {symbol}: {e}")
@@ -394,9 +386,26 @@ class EnhancedEarlyWarningSystem:
                 high_prob_df = pd.DataFrame([
                     {
                         'Symbol': result['symbol'].replace('.NS', ''),
+                        'Signal': result['signal_info']['signal'],
                         'Composite_Score': result['composite_score'],
                         'Probability': result['probability_level'],
                         'Current_Price': result['key_indicators']['current_price'],
+                        'Optimal_Entry': result['risk_management']['entry_value'],
+                        'Hit_Probability': f"{result['risk_management'].get('hit_probability', 0):.1%}",
+                        'Indicator_Confidence': f"{result['risk_management'].get('indicator_confidence', 0):.1f}",
+                        'Monte_Carlo_Paths': result['risk_management'].get('monte_carlo_paths', 0),
+                        'Stop_Value': result['risk_management']['stop_value'],
+                        'Target_Value': result['risk_management']['target_value'] or 'N/A',
+                        'Duration_Days': (result['duration_estimate']['estimated_duration_days'] 
+                                        if result['duration_estimate'] and result['signal_info']['signal'] == 'BUY' 
+                                        else 'N/A'),
+                        'Position_Size': result['risk_management']['suggested_quantity'],
+                        'Risk_Amount': result['risk_management']['risk_amount'],
+                        'Risk_Reward_Ratio': result['risk_management']['risk_reward_ratio'] or 'N/A',
+                        'Calculation_Method': result['risk_management'].get('calculation_method', 'ATR-based'),
+                        'Fallback_Used': result['risk_management'].get('fallback_used', 'Unknown'),
+                        'Data_Confidence': result['risk_management'].get('data_confidence', 'UNKNOWN'),
+                        'Execution_Time_ms': f"{result['risk_management'].get('execution_time_ms', 0):.1f}",
                         'Price_Change_%': result['key_indicators']['price_change_pct'],
                         'Volume_Ratio': result['key_indicators']['volume_ratio'],
                         'Volume_Z_Score': result['key_indicators']['volume_z_score'],
@@ -406,17 +415,14 @@ class EnhancedEarlyWarningSystem:
                         'ATR_%': result['key_indicators']['atr_pct'],
                         'Rel_Strength_20d': result['key_indicators']['relative_strength_20d'],
                         'Can_Enter': result['risk_management']['can_enter_position'],
-                        'Suggested_Qty': result['risk_management']['suggested_quantity'],
-                        'Risk_Amount': result['risk_management']['risk_amount'],
-                        'Stop_Loss': result['risk_management']['suggested_stop_loss']
+                        'Risk_Reason': result['risk_management']['risk_reason']
                     }
                     for result in categorized_results['HIGH']
                 ])
                 
-                high_file = os.path.join(self.output_dirs['reports'], 
-                                       f'high_probability_enhanced_{timestamp}.csv')
-                high_prob_df.to_csv(high_file, index=False)
-                saved_files.append(high_file)
+                high_file = FILE_CONSTANTS['REPORTS_DIR'] / f'high_probability_enhanced_{timestamp}.csv'
+                high_prob_df.to_csv(str(high_file), index=False)
+                saved_files.append(str(high_file))
                 print(f"High probability report saved: {high_file}")
             
             # 2. All results comprehensive report
@@ -428,9 +434,27 @@ class EnhancedEarlyWarningSystem:
                 comprehensive_df = pd.DataFrame([
                     {
                         'Symbol': result['symbol'].replace('.NS', ''),
+                        'Signal': result['signal_info']['signal'],
                         'Composite_Score': result['composite_score'],
                         'Probability_Level': result['probability_level'],
                         'Market_Regime': result['market_regime'],
+                        'Optimal_Entry': result['risk_management']['entry_value'],
+                        'Hit_Probability': f"{result['risk_management'].get('hit_probability', 0):.1%}",
+                        'Indicator_Confidence': f"{result['risk_management'].get('indicator_confidence', 0):.1f}",
+                        'Monte_Carlo_Paths': result['risk_management'].get('monte_carlo_paths', 0),
+                        'Stop_Value': result['risk_management']['stop_value'],
+                        'Target_Value': result['risk_management']['target_value'] or 'N/A',
+                        'Duration_Days': (result['duration_estimate']['estimated_duration_days'] 
+                                        if result['duration_estimate'] and result['signal_info']['signal'] == 'BUY' 
+                                        else 'N/A'),
+                        'Position_Size': result['risk_management']['suggested_quantity'],
+                        'Risk_Amount': result['risk_management']['risk_amount'],
+                        'Risk_Reward_Ratio': result['risk_management']['risk_reward_ratio'] or 'N/A',
+                        'Position_Size_Pct': result['risk_management']['position_size_pct'] or 'N/A',
+                        'Calculation_Method': result['risk_management'].get('calculation_method', 'ATR-based'),
+                        'Fallback_Used': result['risk_management'].get('fallback_used', 'Unknown'),
+                        'Data_Confidence': result['risk_management'].get('data_confidence', 'UNKNOWN'),
+                        'Execution_Time_ms': f"{result['risk_management'].get('execution_time_ms', 0):.1f}",
                         'Volume_Score': result['component_scores']['volume'],
                         'Momentum_Score': result['component_scores']['momentum'],
                         'Trend_Score': result['component_scores']['trend'],
@@ -453,17 +477,15 @@ class EnhancedEarlyWarningSystem:
                     for result in all_results
                 ])
                 
-                comprehensive_file = os.path.join(self.output_dirs['reports'], 
-                                                f'comprehensive_analysis_{timestamp}.csv')
-                comprehensive_df.to_csv(comprehensive_file, index=False)
-                saved_files.append(comprehensive_file)
+                comprehensive_file = FILE_CONSTANTS['REPORTS_DIR'] / f'comprehensive_analysis_{timestamp}.csv'
+                comprehensive_df.to_csv(str(comprehensive_file), index=False)
+                saved_files.append(str(comprehensive_file))
                 print(f"Comprehensive report saved: {comprehensive_file}")
             
             # 3. Analysis summary report
-            summary_file = os.path.join(self.output_dirs['reports'], 
-                                      f'analysis_summary_{timestamp}.txt')
+            summary_file = FILE_CONSTANTS['REPORTS_DIR'] / f'analysis_summary_{timestamp}.txt'
             
-            with open(summary_file, 'w') as f:
+            with open(str(summary_file), 'w') as f:
                 f.write("ENHANCED EARLY WARNING SYSTEM ANALYSIS SUMMARY\n")
                 f.write("=" * 60 + "\n")
                 f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
@@ -507,7 +529,7 @@ class EnhancedEarlyWarningSystem:
         print(f"Analyzing {len(self.nse_stocks)} stocks with advanced indicators...\n")
         
         # Detect market regime
-        self.market_regime = self.detect_market_regime()
+        self.market_regime = MarketRegimeDetector.detect_regime()
         
         # Analysis tracking
         all_results = []
@@ -610,9 +632,16 @@ class EnhancedEarlyWarningSystem:
             high_df = pd.DataFrame([
                 {
                     'Symbol': r['symbol'].replace('.NS', ''),
+                    'Signal': r['signal_info']['signal'],
                     'Score': r['composite_score'],
                     'Price': f"₹{r['key_indicators']['current_price']:.1f}",
-                    'Change%': f"{r['key_indicators']['price_change_pct']:.1f}%",
+                    'Entry': f"₹{r['risk_management']['entry_value']:.1f}",
+                    'Stop': f"₹{r['risk_management']['stop_value']:.1f}",
+                    'Target': (f"₹{r['risk_management']['target_value']:.1f}" 
+                             if r['risk_management']['target_value'] else 'N/A'),
+                    'Duration': (f"{r['duration_estimate']['estimated_duration_days']:.0f}d" 
+                               if r['duration_estimate'] and r['signal_info']['signal'] == 'BUY' 
+                               else 'N/A'),
                     'Vol_Ratio': f"{r['key_indicators']['volume_ratio']:.1f}x",
                     'RSI': f"{r['key_indicators']['rsi']:.1f}",
                     'Risk_OK': '✅' if r['risk_management']['can_enter_position'] else '❌',
@@ -633,6 +662,7 @@ class EnhancedEarlyWarningSystem:
             medium_df = pd.DataFrame([
                 {
                     'Symbol': r['symbol'].replace('.NS', ''),
+                    'Signal': r['signal_info']['signal'],
                     'Score': r['composite_score'],
                     'Price': f"₹{r['key_indicators']['current_price']:.1f}",
                     'Change%': f"{r['key_indicators']['price_change_pct']:.1f}%",
@@ -677,8 +707,8 @@ class EnhancedEarlyWarningSystem:
         
         print(f"Generated {chart_count} enhanced charts")
     
-    def run_backtest_analysis(self, start_date: datetime = None, 
-                            end_date: datetime = None) -> Optional[Dict[str, Any]]:
+    def run_backtest_analysis(self, start_date: Optional[datetime] = None,
+                            end_date: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
         """Run backtesting analysis on historical signals"""
         if not self.analysis_results:
             print("No analysis results available for backtesting")
@@ -689,9 +719,14 @@ class EnhancedEarlyWarningSystem:
         
         # Setup dates
         if end_date is None:
-            end_date = datetime.now().date()
+            end_date_val = datetime.now()
+        else:
+            end_date_val = end_date
+            
         if start_date is None:
-            start_date = end_date - timedelta(days=365)  # 1 year back
+            start_date_val = end_date_val - timedelta(days=365)  # 1 year back
+        else:
+            start_date_val = start_date
         
         # Convert analysis results to backtest format
         signals_data = {}
@@ -716,19 +751,18 @@ class EnhancedEarlyWarningSystem:
         
         # Run backtest
         try:
-            metrics = backtester.walk_forward_backtest(signals_data, start_date, end_date)
+            metrics = backtester.walk_forward_backtest(signals_data, start_date_val, end_date_val)
             
             # Generate and save backtest report
             report = backtester.generate_backtest_report(metrics, save_to_file=True)
             
             # Save backtest results
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backtest_file = os.path.join(self.output_dirs['backtests'], 
-                                       f'backtest_results_{timestamp}.csv')
+            backtest_file = FILE_CONSTANTS['BACKTESTS_DIR'] / f'backtest_results_{timestamp}.csv'
             
             if 'trade_details' in metrics:
                 trade_df = pd.DataFrame(metrics['trade_details'])
-                trade_df.to_csv(backtest_file, index=False)
+                trade_df.to_csv(str(backtest_file), index=False)
                 print(f"Backtest results saved: {backtest_file}")
             
             print("\n" + report)

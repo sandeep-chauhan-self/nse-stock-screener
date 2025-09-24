@@ -11,6 +11,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
+# Import from our centralized constants and core
+from constants import (
+    RISK_CONSTANTS, TRADING_CONSTANTS, ERROR_MESSAGES, SUCCESS_MESSAGES,
+    MONTE_CARLO_PARAMETERS, MarketRegime
+)
+from core import PerformanceUtils, DisplayUtils
+
 class PositionStatus(Enum):
     OPEN = "open"
     CLOSED = "closed"
@@ -50,18 +57,19 @@ class Position:
 
 @dataclass
 class RiskConfig:
-    """Risk management configuration"""
-    max_portfolio_risk: float = 0.20  # 20% max portfolio at risk
-    max_position_size: float = 0.10   # 10% max per position
-    max_daily_loss: float = 0.02      # 2% max daily loss
-    max_monthly_loss: float = 0.08    # 8% max monthly loss
-    max_sector_exposure: float = 0.30  # 30% max per sector
-    max_concurrent_positions: int = 10
+    """Risk management configuration using centralized constants"""
+    max_portfolio_risk: float = RISK_CONSTANTS['DEFAULT_MAX_PORTFOLIO_RISK']
+    max_position_size: float = RISK_CONSTANTS['DEFAULT_MAX_POSITION_SIZE']
+    max_daily_loss: float = RISK_CONSTANTS['DEFAULT_MAX_DAILY_LOSS']
+    max_concurrent_positions: int = RISK_CONSTANTS['DEFAULT_MAX_CONCURRENT_POSITIONS']
+    stop_loss_atr_multiplier: float = RISK_CONSTANTS['DEFAULT_ATR_MULTIPLIER']
     min_risk_reward_ratio: float = 2.0
-    stop_loss_atr_multiplier: float = 2.0
-    breakeven_trigger_ratio: float = 1.5  # Move to breakeven after 1.5x risk
-    trailing_stop_atr_multiplier: float = 1.0  # Trail at 1x ATR
-    correlation_limit: float = 0.7    # Max correlation between positions
+    breakeven_trigger_ratio: float = 1.5
+    trailing_stop_atr_multiplier: float = 1.0
+    correlation_limit: float = 0.7
+    # Additional enhanced parameters
+    max_monthly_loss: float = 0.08
+    max_sector_exposure: float = 0.30
 
 class RiskManager:
     """
@@ -74,10 +82,13 @@ class RiskManager:
     - Daily and monthly loss limits
     """
     
-    def __init__(self, initial_capital: float, config: RiskConfig = None):
+    def __init__(self, initial_capital: float, config: Optional[RiskConfig] = None):
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
         self.config = config or RiskConfig()
+        
+        # Initialize optimal entry calculator (lazy import to avoid circular dependencies)
+        self._optimal_entry_calculator = None
         
         # Position tracking
         self.positions: Dict[str, Position] = {}
@@ -92,6 +103,14 @@ class RiskManager:
         # Historical tracking
         self.pnl_history: List[Tuple[datetime, float]] = []
         self.drawdown_history: List[Tuple[datetime, float]] = []
+    
+    @property
+    def optimal_entry_calculator(self):
+        """Lazy-load optimal entry calculator to avoid circular imports"""
+        if self._optimal_entry_calculator is None:
+            from optimal_entry_calculator import OptimalEntryCalculator
+            self._optimal_entry_calculator = OptimalEntryCalculator()
+        return self._optimal_entry_calculator
         
     def calculate_position_size(self, entry_price: float, stop_loss: float, 
                                signal_score: int) -> Tuple[int, float]:
@@ -432,6 +451,249 @@ class RiskManager:
             details.append(position_info)
         
         return details
+    
+    def calculate_entry_stop_target(self, 
+                                   signal: str,
+                                   current_price: float, 
+                                   indicators: Dict[str, Any],
+                                   signal_data: Optional[Dict[str, Any]] = None,
+                                   symbol: Optional[str] = None,
+                                   historical_data: Optional[pd.DataFrame] = None,
+                                   market_regime: Optional[MarketRegime] = None) -> Dict[str, Any]:
+        """
+        Calculate Entry_Value, Stop_Value, and Target_Value using Monte Carlo optimal entry.
+        
+        Args:
+            signal: Signal type (BUY/HOLD/AVOID)
+            current_price: Current market price
+            indicators: Technical indicators dictionary
+            signal_data: Additional signal-specific data
+            symbol: Stock symbol (for optimal entry calculation)
+            historical_data: Historical OHLCV data
+            market_regime: Current market regime
+            
+        Returns:
+            Dictionary with entry, stop, and target values
+        """
+        try:
+            # Only calculate for BUY signals
+            if signal != "BUY":
+                return {
+                    'entry_value': 0.0,
+                    'stop_value': 0.0,
+                    'target_value': 0.0,
+                    'risk_reward_ratio': 0.0,
+                    'calculation_method': 'Not applicable for non-BUY signals',
+                    'hit_probability': 0.0,
+                    'indicator_confidence': 0.0,
+                    'monte_carlo_paths': 0,
+                    'fallback_used': 'N/A'
+                }
+            
+            # Get ATR for calculations
+            atr = indicators.get('atr', current_price * 0.02)
+            atr_multiplier = self.config.stop_loss_atr_multiplier
+            
+            # Calculate basic stop and target first (for risk bounds)
+            basic_stop_value = current_price - (atr_multiplier * atr)
+            max_stop_loss = current_price * 0.95  # 5% maximum stop
+            basic_stop_value = max(basic_stop_value, max_stop_loss)
+            
+            risk_amount = current_price - basic_stop_value
+            basic_target_value = current_price + (2.5 * risk_amount)  # 2.5:1 R:R
+            
+            # Try Monte Carlo optimal entry calculation if data available
+            if (symbol and historical_data is not None and 
+                market_regime and len(historical_data) >= 60):
+                
+                try:
+                    # Calculate risk bounds for Monte Carlo
+                    risk_bounds = (basic_stop_value, basic_target_value)
+                    
+                    # Run optimal entry calculation
+                    optimal_result = self.optimal_entry_calculator.calculate_optimal_entry(
+                        symbol=symbol,
+                        current_price=current_price,
+                        historical_data=historical_data,
+                        indicators=indicators,
+                        market_regime=market_regime,
+                        risk_bounds=risk_bounds,
+                        target_price=basic_target_value
+                    )
+                    
+                    # Use optimal entry if probability meets threshold
+                    if optimal_result.hit_probability >= MONTE_CARLO_PARAMETERS['min_probability_threshold']:
+                        entry_value = optimal_result.optimal_entry
+                        
+                        # Recalculate stop and target based on optimal entry
+                        stop_value = entry_value - (atr_multiplier * atr)
+                        stop_value = max(stop_value, entry_value * 0.95)  # 5% max stop
+                        
+                        # Target based on risk-reward ratio
+                        risk_amount = entry_value - stop_value
+                        target_value = entry_value + (2.5 * risk_amount)
+                        
+                        # Use resistance level if available and reasonable
+                        vp_resistance = indicators.get('vp_resistance_level')
+                        if (vp_resistance and not np.isnan(vp_resistance) and 
+                            entry_value < vp_resistance < entry_value * 1.3):
+                            target_value = min(target_value, vp_resistance * 0.99)
+                        
+                        # Calculate final risk-reward ratio
+                        actual_risk = entry_value - stop_value
+                        actual_reward = target_value - entry_value
+                        risk_reward_ratio = actual_reward / actual_risk if actual_risk > 0 else 0
+                        
+                        return {
+                            'entry_value': round(entry_value, 2),
+                            'stop_value': round(stop_value, 2),
+                            'target_value': round(target_value, 2),
+                            'risk_reward_ratio': round(risk_reward_ratio, 2),
+                            'calculation_method': f'Monte Carlo Optimal (ATR={atr:.2f})',
+                            'risk_amount': round(actual_risk, 2),
+                            'reward_potential': round(actual_reward, 2),
+                            'hit_probability': round(optimal_result.hit_probability, 3),
+                            'indicator_confidence': round(optimal_result.indicator_confidence, 1),
+                            'monte_carlo_paths': optimal_result.monte_carlo_paths,
+                            'fallback_used': optimal_result.fallback_used,
+                            'data_confidence': optimal_result.data_confidence,
+                            'execution_time_ms': round(optimal_result.execution_time_ms, 1)
+                        }
+                    
+                except Exception as e:
+                    print(f"Monte Carlo calculation failed, using ATR fallback: {e}")
+            
+            # Fallback to ATR-based entry (original method)
+            entry_value = current_price
+            stop_value = basic_stop_value
+            target_value = basic_target_value
+            
+            # Calculate risk-reward ratio
+            actual_risk = entry_value - stop_value
+            actual_reward = target_value - entry_value
+            risk_reward_ratio = actual_reward / actual_risk if actual_risk > 0 else 0
+            
+            return {
+                'entry_value': round(entry_value, 2),
+                'stop_value': round(stop_value, 2),
+                'target_value': round(target_value, 2),
+                'risk_reward_ratio': round(risk_reward_ratio, 2),
+                'calculation_method': f'ATR-based fallback (ATR={atr:.2f})',
+                'risk_amount': round(actual_risk, 2),
+                'reward_potential': round(actual_reward, 2),
+                'hit_probability': 0.2,  # Default probability
+                'indicator_confidence': 50.0,  # Default confidence
+                'monte_carlo_paths': 0,
+                'fallback_used': 'ATR-based entry',
+                'data_confidence': 'INSUFFICIENT',
+                'execution_time_ms': 0.0
+            }
+            
+        except Exception as e:
+            return {
+                'entry_value': current_price,
+                'stop_value': current_price * 0.97,  # 3% default stop
+                'target_value': current_price * 1.06,  # 6% default target (2:1 R:R)
+                'risk_reward_ratio': 2.0,
+                'calculation_method': f'Default values due to error: {e}',
+                'risk_amount': current_price * 0.03,
+                'reward_potential': current_price * 0.06,
+                'hit_probability': 0.1,
+                'indicator_confidence': 25.0,
+                'monte_carlo_paths': 0,
+                'fallback_used': 'Error fallback',
+                'data_confidence': 'ERROR',
+                'execution_time_ms': 0.0
+            }
+    
+    def enhanced_position_analysis(self,
+                                  symbol: str,
+                                  signal: str,
+                                  composite_score: int,
+                                  indicators: Dict[str, Any],
+                                  signal_data: Optional[Dict[str, Any]] = None,
+                                  historical_data: Optional[pd.DataFrame] = None,
+                                  market_regime: Optional[MarketRegime] = None) -> Dict[str, Any]:
+        """
+        Comprehensive position analysis including entry/stop/target and position sizing.
+        
+        This is the main method to be called from the enhanced early warning system.
+        """
+        try:
+            current_price = indicators.get('current_price', 0)
+            if current_price <= 0:
+                return self._default_position_analysis("Invalid current price")
+            
+            # Calculate entry, stop, and target values using Monte Carlo if data available
+            entry_stop_target = self.calculate_entry_stop_target(
+                signal=signal, 
+                current_price=current_price, 
+                indicators=indicators, 
+                signal_data=signal_data,
+                symbol=symbol,
+                historical_data=historical_data,
+                market_regime=market_regime
+            )
+            
+            # Check if position passes risk management
+            can_enter, risk_reason, quantity, risk_amount = self.can_enter_position(
+                symbol, 
+                entry_stop_target['entry_value'], 
+                entry_stop_target['stop_value'], 
+                composite_score
+            )
+            
+            # Calculate position size for the risk amount
+            if can_enter and signal == "BUY":
+                position_size_info = self.calculate_position_size(
+                    entry_stop_target['entry_value'],
+                    entry_stop_target['stop_value'],
+                    composite_score
+                )
+                final_quantity = position_size_info[0]
+                final_risk_amount = position_size_info[1]
+            else:
+                final_quantity = 0
+                final_risk_amount = 0.0
+            
+            return {
+                **entry_stop_target,
+                'position_size': final_quantity,
+                'risk_amount': round(final_risk_amount, 2),
+                'can_enter_position': can_enter,
+                'risk_reason': risk_reason,
+                'signal': signal,
+                'composite_score': composite_score,
+                'portfolio_impact': {
+                    'position_weight': round(final_risk_amount / self.current_capital * 100, 2) if self.current_capital > 0 else 0,
+                    'remaining_buying_power': round(self.current_capital - final_risk_amount, 2),
+                    'open_positions_count': len(self.positions)
+                }
+            }
+            
+        except Exception as e:
+            return self._default_position_analysis(f"Error in position analysis: {e}")
+    
+    def _default_position_analysis(self, reason: str) -> Dict[str, Any]:
+        """Return default position analysis when calculation fails"""
+        return {
+            'entry_value': 0.0,
+            'stop_value': 0.0,
+            'target_value': 0.0,
+            'risk_reward_ratio': 0.0,
+            'position_size': 0,
+            'risk_amount': 0.0,
+            'can_enter_position': False,
+            'risk_reason': reason,
+            'signal': 'AVOID',
+            'composite_score': 0,
+            'calculation_method': 'Default - calculation failed',
+            'portfolio_impact': {
+                'position_weight': 0.0,
+                'remaining_buying_power': self.current_capital,
+                'open_positions_count': len(self.positions)
+            }
+        }
 
 # Example usage and testing
 if __name__ == "__main__":
