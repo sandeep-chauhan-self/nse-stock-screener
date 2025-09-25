@@ -87,7 +87,8 @@ class OptimalEntryCalculator:
                               market_regime: MarketRegime,
                               risk_bounds: Optional[Tuple[float, float]] = None,
                               target_price: Optional[float] = None,
-                              horizon_days: Optional[int] = None) -> OptimalEntryResult:
+                              horizon_days: Optional[int] = None,
+                              signal: Optional[str] = None) -> OptimalEntryResult:
         """
         Calculate probability-weighted optimal entry price.
         
@@ -131,7 +132,7 @@ class OptimalEntryCalculator:
             final_target_price = self._determine_target_price(current_price, indicators, target_price)
             
             # Generate price grid within risk bounds
-            price_grid = self._generate_price_grid(current_price, historical_data, risk_bounds)
+            price_grid = self._generate_price_grid(current_price, historical_data, risk_bounds, signal)
             
             if len(price_grid) < 5:  # Need at least 5 price points
                 return self._create_fallback_result(symbol, current_price, "Price grid too small", start_time)
@@ -191,9 +192,151 @@ class OptimalEntryCalculator:
             
             return result
             
+            return result
+            
         except Exception as e:
             print(f"Error in optimal entry calculation for {symbol}: {e}")
             return self._create_fallback_result(symbol, current_price, f"Calculation error: {str(e)}", start_time)
+    
+    def monte_carlo_optimal_entry(self, symbol: str, historical_prices: pd.DataFrame, params: dict) -> dict:
+        """
+        Calculate Monte Carlo optimal entry with validation and success flag.
+        
+        Returns:
+        {
+          "success": bool,
+          "entry": float or None,
+          "reason": str,
+          "debug": {...}
+        }
+        """
+        try:
+            if historical_prices is None or historical_prices.empty:
+                return {
+                    "success": False,
+                    "entry": None,
+                    "reason": "No historical price data",
+                    "debug": {}
+                }
+            
+            # Extract current price
+            current_price = historical_prices['Close'].iloc[-1]
+            
+            # Create minimal indicators for calculation
+            indicators = self._create_minimal_indicators(historical_prices)
+            
+            # Run optimal entry calculation
+            result = self.calculate_optimal_entry(
+                symbol=symbol,
+                current_price=current_price,
+                historical_data=historical_prices,
+                indicators=indicators,
+                market_regime=MarketRegime.BULLISH,  # Default regime
+                risk_bounds=None,
+                target_price=None,
+                horizon_days=params.get('horizon_days', self.config['horizon_days']),
+                signal=params.get('signal')  # Pass signal parameter
+            )
+            
+            # Validate result
+            if result.hit_probability >= self.config['min_probability_threshold']:
+                # Additional sanity checks
+                entry = result.optimal_entry
+                
+                # Check if entry is reasonable (within bounds)
+                min_reasonable = current_price * 0.8
+                max_reasonable = current_price * 1.2
+                
+                if min_reasonable <= entry <= max_reasonable:
+                    return {
+                        "success": True,
+                        "entry": entry,
+                        "reason": f"Monte Carlo success: prob={result.hit_probability:.3f}",
+                        "debug": {
+                            "hit_probability": result.hit_probability,
+                            "indicator_confidence": result.indicator_confidence,
+                            "data_confidence": result.data_confidence,
+                            "paths_used": result.monte_carlo_paths
+                        }
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "entry": None,
+                        "reason": f"Entry {entry:.2f} outside reasonable bounds [{min_reasonable:.2f}, {max_reasonable:.2f}]",
+                        "debug": {"entry": entry, "bounds": [min_reasonable, max_reasonable]}
+                    }
+            else:
+                return {
+                    "success": False,
+                    "entry": None,
+                    "reason": f"Hit probability {result.hit_probability:.3f} below threshold {self.config['min_probability_threshold']}",
+                    "debug": {"hit_probability": result.hit_probability}
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "entry": None,
+                "reason": f"Monte Carlo calculation error: {str(e)}",
+                "debug": {"error": str(e)}
+            }
+    
+    def _create_minimal_indicators(self, data: pd.DataFrame) -> dict:
+        """Create minimal indicators for Monte Carlo calculation."""
+        try:
+            close = data['Close']
+            high = data['High']
+            low = data['Low']
+            volume = data['Volume']
+            
+            # Simple RSI approximation
+            rsi = 50  # Neutral default
+            
+            # Simple Bollinger Bands
+            sma = close.rolling(20).mean().iloc[-1]
+            std = close.rolling(20).std().iloc[-1]
+            bb_upper = sma + 2 * std
+            bb_lower = sma - 2 * std
+            
+            # Volume ratio
+            avg_volume = volume.rolling(20).mean().iloc[-1]
+            current_volume = volume.iloc[-1]
+            vol_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            return {
+                'rsi': rsi,
+                'bb_upper': bb_upper,
+                'bb_lower': bb_lower,
+                'bb_middle': sma,
+                'vol_ratio': vol_ratio,
+                'vol_zscore': 0.0,  # Neutral
+                'macd_hist': 0.0,   # Neutral
+                'macd_strength': 0.0,
+                'adx': 20,          # Neutral trend
+                'trend_strength': 0.0,
+                'ema_fast': close.iloc[-1],
+                'ema_slow': close.iloc[-1],
+                'ma_slope_fast': 0.0
+            }
+            
+        except Exception:
+            # Return neutral indicators
+            return {
+                'rsi': 50,
+                'bb_upper': data['Close'].iloc[-1] * 1.02,
+                'bb_lower': data['Close'].iloc[-1] * 0.98,
+                'bb_middle': data['Close'].iloc[-1],
+                'vol_ratio': 1.0,
+                'vol_zscore': 0.0,
+                'macd_hist': 0.0,
+                'macd_strength': 0.0,
+                'adx': 20,
+                'trend_strength': 0.0,
+                'ema_fast': data['Close'].iloc[-1],
+                'ema_slow': data['Close'].iloc[-1],
+                'ma_slope_fast': 0.0
+            }
     
     def _validate_inputs(self, symbol: str, current_price: float, 
                         historical_data: Optional[pd.DataFrame], indicators: Dict[str, Any]) -> bool:
@@ -319,7 +462,7 @@ class OptimalEntryCalculator:
             return current_price * (1 + self.config['target_price_fallback_pct'])
     
     def _generate_price_grid(self, current_price: float, historical_data: Optional[pd.DataFrame],
-                           risk_bounds: Optional[Tuple[float, float]]) -> np.ndarray:
+                           risk_bounds: Optional[Tuple[float, float]], signal: Optional[str] = None) -> np.ndarray:
         """Generate discretized price grid for scoring"""
         try:
             if historical_data is None or len(historical_data) == 0:
@@ -338,11 +481,16 @@ class OptimalEntryCalculator:
                 current_price - (5 * atr),
                 self.config['min_absolute_price']
             )
-            upper_limit = min(
-                hist_max * self.config['historical_max_multiplier'],
-                current_price + (5 * atr),
-                current_price * self.config['upper_price_multiplier']
-            )
+            
+            # CRITICAL FIX: For BUY signals, entry should not exceed current price
+            if signal and signal.upper() == 'BUY':
+                upper_limit = current_price  # FIXED: BUY entries cannot exceed current price
+            else:
+                upper_limit = min(
+                    hist_max * self.config['historical_max_multiplier'],
+                    current_price + (5 * atr),
+                    current_price * self.config['upper_price_multiplier']
+                )
             
             # Apply risk bounds if provided
             if risk_bounds:

@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from typing import Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
 
 from core import DataFetcher
 from constants import TRADING_CONSTANTS
@@ -21,9 +20,7 @@ class ForecastEngine:
     """
     
     def __init__(self):
-        self.cache = {}  # Cache for historical data
-        self.cache_expiry = {}  # Cache expiry times
-        self.cache_duration = timedelta(hours=1)  # Cache for 1 hour
+        pass
     
     def estimate_duration(self,
                          symbol: str,
@@ -77,21 +74,8 @@ class ForecastEngine:
             return self._default_forecast(f"Error in duration estimation: {e}")
     
     def _get_cached_data(self, symbol: str) -> Optional[pd.DataFrame]:
-        """Get cached historical data or fetch new data"""
-        current_time = datetime.now()
-        
-        # Check if cached data is still valid
-        if (symbol in self.cache and 
-            symbol in self.cache_expiry and 
-            current_time < self.cache_expiry[symbol]):
-            return self.cache[symbol]
-        
-        # Fetch new data
+        """Fetch fresh historical data"""
         data = DataFetcher.fetch_stock_data(symbol, period="2y")
-        if data is not None:
-            self.cache[symbol] = data
-            self.cache_expiry[symbol] = current_time + self.cache_duration
-        
         return data
     
     def _estimate_by_atr(self, 

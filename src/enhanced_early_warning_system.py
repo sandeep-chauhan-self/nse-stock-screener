@@ -106,6 +106,27 @@ class EnhancedEarlyWarningSystem:
             from core import DataFetcher
             historical_data = DataFetcher.fetch_stock_data(symbol, period="1y")
             
+            # Calculate historical price levels
+            historical_prices = {}
+            if historical_data is not None and not historical_data.empty:
+                historical_prices = {
+                    'All_time_high': round(historical_data['High'].max(), 2),
+                    'All_time_low': round(historical_data['Low'].min(), 2),
+                    'Last_30Day_High': round(historical_data['High'].tail(30).max(), 2) if len(historical_data) >= 30 else round(historical_data['High'].max(), 2),
+                    'Last_30Day_Low': round(historical_data['Low'].tail(30).min(), 2) if len(historical_data) >= 30 else round(historical_data['Low'].min(), 2),
+                    '1Week_High': round(historical_data['High'].tail(7).max(), 2) if len(historical_data) >= 7 else round(historical_data['High'].max(), 2),
+                    '1Week_Low': round(historical_data['Low'].tail(7).min(), 2) if len(historical_data) >= 7 else round(historical_data['Low'].min(), 2)
+                }
+            else:
+                historical_prices = {
+                    'All_time_high': 'N/A',
+                    'All_time_low': 'N/A',
+                    'Last_30Day_High': 'N/A',
+                    'Last_30Day_Low': 'N/A',
+                    '1Week_High': 'N/A',
+                    '1Week_Low': 'N/A'
+                }
+            
             # Get all technical indicators
             indicators = self.indicators_engine.compute_all_indicators(symbol)
             
@@ -235,6 +256,7 @@ class EnhancedEarlyWarningSystem:
             scoring_result['signal_info'] = signal_result
             scoring_result['duration_estimate'] = duration_estimate
             scoring_result['risk_management'] = risk_info
+            scoring_result['historical_prices'] = historical_prices
             
             return scoring_result
             
@@ -248,65 +270,107 @@ class EnhancedEarlyWarningSystem:
         """
         **CRITICAL FIX**: Validate and fix trade data to ensure mathematical consistency
         
-        This function implements Issue #1 fix requirements:
-        - 100% of BUY signals must have target_value > entry_value
-        - Risk-reward ratio validation: minimum 1.5:1
-        - Mathematical validation before saving any trade data
+        Enhanced validation for hybrid entry system:
+        - Entry/stop/target validation for BUY/SELL signals
+        - Risk-reward ratio recomputation and validation
+        - Entry method validation and current_price fallback detection
+        - Validation flags and messages for CI gates
         """
         try:
-            if signal == 'BUY':
+            # Initialize validation fields
+            validation_flag = 'PASS'
+            validation_message = ''
+            entry_method = risk_info.get('entry_method', 'UNAVAILABLE')
+            current_price = risk_info.get('entry_value', 0)  # Approximation for validation
+            
+            if signal in {'BUY', 'SELL'}:
                 entry_value = risk_info.get('entry_value', 0)
                 stop_value = risk_info.get('stop_value', 0)
                 target_value = risk_info.get('target_value')
                 
-                # **MANDATORY VALIDATION**: Check critical values exist
-                if entry_value <= 0 or stop_value <= 0:
-                    print(f"    ERROR {symbol}: Invalid entry/stop values")
-                    return risk_info
+                # **MANDATORY VALIDATION**: Check critical values exist and are valid
+                if entry_value <= 0:
+                    validation_flag = 'FAIL'
+                    validation_message += 'Missing or invalid entry_value for actionable signal; '
                 
-                # **MANDATORY FIX**: Ensure target_value > entry_value for BUY signals
-                if target_value is None or target_value <= entry_value:
-                    risk_per_share = abs(entry_value - stop_value)
-                    if risk_per_share <= 0:
-                        risk_per_share = entry_value * 0.03  # 3% fallback
-                        stop_value = entry_value - risk_per_share
-                        risk_info['stop_value'] = stop_value
+                if stop_value <= 0:
+                    validation_flag = 'FAIL'
+                    validation_message += 'Missing or invalid stop_value for actionable signal; '
+                
+                if target_value is None or target_value <= 0:
+                    validation_flag = 'FAIL'
+                    validation_message += 'Missing target_value for actionable signal; '
+                
+                # **MANDATORY VALIDATION**: Target must be profitable for signal direction
+                if signal == 'BUY' and target_value and target_value <= entry_value:
+                    validation_flag = 'FAIL'
+                    validation_message += f'BUY signal target {target_value:.2f} <= entry {entry_value:.2f}; '
+                
+                if signal == 'SELL' and target_value and target_value >= entry_value:
+                    validation_flag = 'FAIL'
+                    validation_message += f'SELL signal target {target_value:.2f} >= entry {entry_value:.2f}; '
+                
+                # **MANDATORY FIX**: Recompute risk-reward ratio
+                if entry_value > 0 and stop_value > 0 and target_value and target_value > 0:
+                    if signal == 'BUY':
+                        risk = entry_value - stop_value
+                        reward = target_value - entry_value
+                    else:  # SELL
+                        risk = stop_value - entry_value
+                        reward = entry_value - target_value
                     
-                    # Calculate target with minimum 2.5:1 R:R
-                    target_value = entry_value + (2.5 * risk_per_share)
-                    risk_info['target_value'] = target_value
-                    
-                    print(f"    FIXED target for {symbol}: Entry={entry_value:.2f}, Target={target_value:.2f}")
+                    if risk > 0:
+                        computed_rrr = reward / risk
+                        
+                        # Check against stored RRR
+                        stored_rrr = risk_info.get('risk_reward_ratio')
+                        if stored_rrr and abs(computed_rrr - stored_rrr) > 0.05:
+                            validation_message += f'R:R mismatch: stored {stored_rrr:.2f}, computed {computed_rrr:.2f}; '
+                            risk_info['risk_reward_ratio'] = round(computed_rrr, 2)
+                        
+                        # Minimum R:R validation
+                        if computed_rrr < 1.5:
+                            validation_flag = 'REVIEW'
+                            validation_message += f'Low R:R ratio {computed_rrr:.2f} < 1.5; '
+                    else:
+                        validation_flag = 'FAIL'
+                        validation_message += 'Invalid risk calculation (risk <= 0); '
                 
-                # **MANDATORY VALIDATION**: Risk-reward ratio check
-                final_risk = abs(entry_value - stop_value)
-                final_reward = target_value - entry_value
+                # **ENTRY METHOD VALIDATION**: Check for current_price fallback anti-pattern
+                if abs(entry_value - current_price) < 0.01 and entry_method == 'CURRENT_PRICE':
+                    validation_message += 'Entry equals current price (anti-pattern); '
+                    if validation_flag == 'PASS':
+                        validation_flag = 'REVIEW'
                 
-                if final_risk <= 0 or final_reward <= 0:
-                    print(f"    ERROR {symbol}: Invalid risk/reward calculation")
-                    return risk_info
-                
-                calculated_rrr = final_reward / final_risk
-                
-                # **REQUIREMENT**: Minimum 1.5:1 risk-reward ratio
-                if calculated_rrr < 1.5:
-                    # Adjust target to meet minimum R:R
-                    adjusted_target = entry_value + (1.5 * final_risk)
-                    risk_info['target_value'] = adjusted_target
-                    calculated_rrr = 1.5
-                    print(f"    ADJUSTED R:R for {symbol}: Target adjusted to {adjusted_target:.2f} for minimum 1.5:1 R:R")
-                
-                # Update risk-reward ratio
-                risk_info['risk_reward_ratio'] = round(calculated_rrr, 2)
-                
-                # **VALIDATION PASSED**: Log success
-                if calculated_rrr >= 1.5 and target_value > entry_value:
-                    print(f"    ✅ VALIDATED {symbol}: Entry={entry_value:.2f}, Target={target_value:.2f}, R:R={calculated_rrr:.2f}")
+                # **RSI VALIDATION**: High RSI for BUY signals
+                rsi = risk_info.get('rsi', 50)  # Need to get RSI from somewhere
+                if signal == 'BUY' and rsi > 75 and entry_method != 'BREAKOUT':
+                    validation_message += f'High RSI {rsi:.1f} for BUY signal without breakout; '
+                    if validation_flag == 'PASS':
+                        validation_flag = 'REVIEW'
+            
+            # Set validation fields in risk_info
+            risk_info['validation_flag'] = validation_flag
+            risk_info['validation_message'] = validation_message.strip()
+            risk_info['entry_method'] = entry_method
+            risk_info['order_type'] = risk_info.get('order_type', 'MARKET')
+            risk_info['entry_clamp_reason'] = risk_info.get('entry_clamp_reason')
+            risk_info['entry_debug'] = risk_info.get('entry_debug', {})
+            
+            # Log validation results
+            if validation_flag == 'FAIL':
+                print(f"    ❌ VALIDATION FAILED {symbol}: {validation_message}")
+            elif validation_flag == 'REVIEW':
+                print(f"    ⚠️  VALIDATION REVIEW {symbol}: {validation_message}")
+            else:
+                print(f"    ✅ VALIDATION PASSED {symbol}")
             
             return risk_info
             
         except Exception as e:
             print(f"    ERROR validating {symbol}: {e}")
+            risk_info['validation_flag'] = 'FAIL'
+            risk_info['validation_message'] = f'Validation error: {str(e)}'
             return risk_info
     
     def filter_and_rank_results(self, results: List[Dict[str, Any]]) -> Dict[str, List[Dict]]:
@@ -475,12 +539,30 @@ class EnhancedEarlyWarningSystem:
                         'Risk_Approved': result['risk_management']['can_enter_position'],
                         'Current_Price': result['key_indicators']['current_price'],
                         'Optimal_Entry': result['risk_management']['entry_value'],
+                        
+                        'price_difference': int(round(result['risk_management']['entry_value'] - result['key_indicators']['current_price'])) 
+                                           if result['key_indicators']['current_price'] and result['risk_management']['entry_value'] 
+                                           else 'N/A',
                         'Target_Value': result['risk_management']['target_value'] or 'N/A',
-                        'Profit_Value': (result['risk_management']['target_value'] - result['risk_management']['entry_value']) 
+                        'Profit_Value': int(round(result['risk_management']['target_value'] - result['risk_management']['entry_value'])) 
                                        if result['risk_management']['target_value'] and result['risk_management']['target_value'] != 'N/A' 
                                        else 'N/A',
+                        'All_time_high': result['historical_prices']['All_time_high'],
+                        'All_time_low': result['historical_prices']['All_time_low'],
+                        'Last_30Day_High': result['historical_prices']['Last_30Day_High'],
+                        'Last_30Day_Low': result['historical_prices']['Last_30Day_Low'],
+                        '1Week_High': result['historical_prices']['1Week_High'],
+                        '1Week_Low': result['historical_prices']['1Week_Low'],
+                       
                         'Stop_Value': result['risk_management']['stop_value'],
                         'Price_Change_%': result['key_indicators']['price_change_pct'],
+                        # Entry timing analysis columns
+                        'Entry_Timing': result['risk_management'].get('entry_timing', 'UNKNOWN'),
+                        'Timing_Confidence': result['risk_management'].get('timing_confidence', 'UNKNOWN'),
+                        'Timing_Reason': result['risk_management'].get('timing_reason', ''),
+                        'Wait_Probability': result['risk_management'].get('wait_probability', 0.0),
+                        'Suggested_Wait_Days': result['risk_management'].get('suggested_wait_days', 0),
+                        'Spike_Score': result['risk_management'].get('spike_score', 0),
                         'Duration_Days': (result['duration_estimate']['estimated_duration_days'] 
                                         if result['duration_estimate'] and result['signal_info']['signal'] == 'BUY' 
                                         else 'N/A'),
@@ -512,7 +594,14 @@ class EnhancedEarlyWarningSystem:
                         'ATR_%': result['key_indicators']['atr_pct'],
                         'Rel_Strength_20d': result['key_indicators']['relative_strength_20d'],
                         'Risk_Reason': result['risk_management']['risk_reason'],
-                        'Execution_Time_ms': f"{result['risk_management'].get('execution_time_ms', 0):.1f}"
+                        'Execution_Time_ms': f"{result['risk_management'].get('execution_time_ms', 0):.1f}",
+                        # New hybrid entry system columns
+                        'entry_method': result['risk_management'].get('entry_method', 'UNAVAILABLE'),
+                        'order_type': result['risk_management'].get('order_type', 'MARKET'),
+                        'validation_flag': result['risk_management'].get('validation_flag', 'PASS'),
+                        'validation_message': result['risk_management'].get('validation_message', ''),
+                        'entry_clamp_reason': result['risk_management'].get('entry_clamp_reason'),
+                        'entry_debug': str(result['risk_management'].get('entry_debug', {})),
                     }
                     for result in categorized_results['HIGH']
                 ])
@@ -536,12 +625,29 @@ class EnhancedEarlyWarningSystem:
                         'Risk_Approved': result['risk_management']['can_enter_position'],
                         'Current_Price': result['key_indicators']['current_price'],
                         'Optimal_Entry': result['risk_management']['entry_value'],
+                        'price_difference': int(round(result['risk_management']['entry_value'] - result['key_indicators']['current_price'])) 
+                                           if result['key_indicators']['current_price'] and result['risk_management']['entry_value'] 
+                                           else 'N/A',
                         'Target_Value': result['risk_management']['target_value'] or 'N/A',
-                        'Profit_Value': (result['risk_management']['target_value'] - result['risk_management']['entry_value']) 
+                        'Profit_Value': int(round(result['risk_management']['target_value'] - result['risk_management']['entry_value'])) 
                                        if result['risk_management']['target_value'] and result['risk_management']['target_value'] != 'N/A' 
                                        else 'N/A',
+                        'All_time_high': result['historical_prices']['All_time_high'],
+                        'All_time_low': result['historical_prices']['All_time_low'],
+                        'Last_30Day_High': result['historical_prices']['Last_30Day_High'],
+                        'Last_30Day_Low': result['historical_prices']['Last_30Day_Low'],
+                        '1Week_High': result['historical_prices']['1Week_High'],
+                        '1Week_Low': result['historical_prices']['1Week_Low'],
+                        
                         'Stop_Value': result['risk_management']['stop_value'],
                         'Price_Change_%': result['key_indicators']['price_change_pct'],
+                        # Entry timing analysis columns
+                        'Entry_Timing': result['risk_management'].get('entry_timing', 'UNKNOWN'),
+                        'Timing_Confidence': result['risk_management'].get('timing_confidence', 'UNKNOWN'),
+                        'Timing_Reason': result['risk_management'].get('timing_reason', ''),
+                        'Wait_Probability': result['risk_management'].get('wait_probability', 0.0),
+                        'Suggested_Wait_Days': result['risk_management'].get('suggested_wait_days', 0),
+                        'Spike_Score': result['risk_management'].get('spike_score', 0),
                         'Duration_Days': (result['duration_estimate']['estimated_duration_days'] 
                                         if result['duration_estimate'] and result['signal_info']['signal'] == 'BUY' 
                                         else 'N/A'),
@@ -573,7 +679,14 @@ class EnhancedEarlyWarningSystem:
                         'ATR_%': result['key_indicators']['atr_pct'],
                         'Rel_Strength_20d': result['key_indicators']['relative_strength_20d'],
                         'Risk_Reason': result['risk_management']['risk_reason'],
-                        'Execution_Time_ms': f"{result['risk_management'].get('execution_time_ms', 0):.1f}"
+                        'Execution_Time_ms': f"{result['risk_management'].get('execution_time_ms', 0):.1f}",
+                        # New hybrid entry system columns
+                        'entry_method': result['risk_management'].get('entry_method', 'UNAVAILABLE'),
+                        'order_type': result['risk_management'].get('order_type', 'MARKET'),
+                        'validation_flag': result['risk_management'].get('validation_flag', 'PASS'),
+                        'validation_message': result['risk_management'].get('validation_message', ''),
+                        'entry_clamp_reason': result['risk_management'].get('entry_clamp_reason'),
+                        'entry_debug': str(result['risk_management'].get('entry_debug', {})),
                     }
                     for result in all_results
                 ])
@@ -746,7 +859,9 @@ class EnhancedEarlyWarningSystem:
                     'Vol_Ratio': f"{r['key_indicators']['volume_ratio']:.1f}x",
                     'RSI': f"{r['key_indicators']['rsi']:.1f}",
                     'Risk_OK': '✅' if r['risk_management']['can_enter_position'] else '❌',
-                    'Qty': r['risk_management']['suggested_quantity']
+                    'Qty': r['risk_management']['suggested_quantity'],
+                    'Entry_Timing': r['risk_management'].get('entry_timing', 'UNKNOWN'),
+                    'Wait_Prob': f"{r['risk_management'].get('wait_probability', 0):.0%}"
                 }
                 for r in categorized_results['HIGH'][:15]  # Top 15
             ])

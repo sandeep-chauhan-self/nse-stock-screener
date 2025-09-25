@@ -1,3 +1,61 @@
-data/
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+.pipenv/
+pipenv/
+.virtualenv/
+
+# Output and reports
 output/
-docs/
+output/reports/
+output/charts/
+output/backtests/
+
+# Data files
+data/*.csv
+data/*.xlsx
+data/*.parquet
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Batch files (keep for workflow)
+!*.bat
+
+# Test and coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+coverage.xml
+*.cover
+.cache
+.pytest_cache/
+
+# Misc
+*.bak
+*.swp
+*.tmp
+
+*.pyc
+*.txt

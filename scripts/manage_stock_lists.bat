@@ -29,7 +29,7 @@ goto fetch_real_symbols
   echo Checking dependencies...
   
   :: Use the dependency check script
-  python check_deps.py
+  python ../src/check_deps.py
   if %ERRORLEVEL% neq 0 (
     echo Installing missing dependencies...
     pip install yfinance pandas requests beautifulsoup4

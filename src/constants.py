@@ -20,7 +20,7 @@ class MarketRegime(Enum):
 # Trading Constants
 TRADING_CONSTANTS = {
     'DEFAULT_BATCH_SIZE': 50,
-    'DEFAULT_TIMEOUT': 10,
+    'DEFAULT_TIMEOUT': 5,
     'DEFAULT_INITIAL_CAPITAL': 50000,  # 10 Lakh
     'MAX_CHARTS_LIMIT': 10,
     'RATE_LIMIT_DELAY': 0.5,

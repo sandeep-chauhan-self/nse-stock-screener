@@ -58,8 +58,8 @@ class AdvancedBacktester:
     - Risk management
     """
     
-    def __init__(self, config: BacktestConfig = None):
-        self.config = config or BacktestConfig()
+    def __init__(self, config: Optional[BacktestConfig] = None):
+        self.config: BacktestConfig = config or BacktestConfig()
         self.trades: List[TradeResult] = []
         self.portfolio_value_history: List[Tuple[datetime, float]] = []
         self.daily_returns: List[float] = []
@@ -178,12 +178,16 @@ class AdvancedBacktester:
                 exit_price = data['Close'].iloc[-1]
                 exit_reason = 'time_exit'
             
+            # Ensure exit_price is valid
+            if exit_price is None or not isinstance(exit_price, (int, float)):
+                return None
+            
             # Calculate returns
             gross_return_pct = ((exit_price - entry_price) / entry_price) * 100
             
             # Apply transaction costs
-            entry_value = quantity * entry_price
-            exit_value = quantity * exit_price
+            entry_value = int(quantity) * float(entry_price)
+            exit_value = int(quantity) * float(exit_price)
             entry_costs = self.apply_transaction_costs(entry_value)
             exit_costs = self.apply_transaction_costs(exit_value)
             total_costs = entry_costs + exit_costs
@@ -267,8 +271,8 @@ class AdvancedBacktester:
                             
                             # Recalculate returns
                             gross_return_pct = ((trade.exit_price - trade.entry_price) / trade.entry_price) * 100
-                            entry_value = trade.quantity * trade.entry_price
-                            exit_value = trade.quantity * trade.exit_price
+                            entry_value = int(trade.quantity) * float(trade.entry_price)
+                            exit_value = int(trade.quantity) * float(trade.exit_price)
                             entry_costs = self.apply_transaction_costs(entry_value)
                             exit_costs = self.apply_transaction_costs(exit_value)
                             total_costs = entry_costs + exit_costs
@@ -328,7 +332,7 @@ class AdvancedBacktester:
                 ticker = yf.Ticker(symbol)
                 final_data = ticker.history(start=trade.entry_date, end=end_date + timedelta(days=1))
                 if not final_data.empty:
-                    final_price = final_data['Close'].iloc[-1]
+                    final_price = float(final_data['Close'].iloc[-1])
                     
                     trade.exit_date = end_date
                     trade.exit_price = final_price
@@ -337,8 +341,8 @@ class AdvancedBacktester:
                     
                     # Recalculate returns
                     gross_return_pct = ((trade.exit_price - trade.entry_price) / trade.entry_price) * 100
-                    entry_value = trade.quantity * trade.entry_price
-                    exit_value = trade.quantity * trade.exit_price
+                    entry_value = int(trade.quantity) * float(trade.entry_price)
+                    exit_value = int(trade.quantity) * float(trade.exit_price)
                     entry_costs = self.apply_transaction_costs(entry_value)
                     exit_costs = self.apply_transaction_costs(exit_value)
                     total_costs = entry_costs + exit_costs
