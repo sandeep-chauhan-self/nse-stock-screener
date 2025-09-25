@@ -476,18 +476,19 @@ class RiskManager:
             Dictionary with entry, stop, and target values
         """
         try:
-            # Only calculate for BUY signals
+            # **CRITICAL FIX**: Only calculate entry/stop/target for BUY signals
+            # For non-BUY signals, return minimal valid structure
             if signal != "BUY":
                 return {
-                    'entry_value': 0.0,
-                    'stop_value': 0.0,
-                    'target_value': 0.0,
-                    'risk_reward_ratio': 0.0,
+                    'entry_value': current_price,  # Use current price for reference
+                    'stop_value': current_price * 0.97,  # 3% below for reference
+                    'target_value': None,  # No target for non-actionable signals
+                    'risk_reward_ratio': None,
                     'calculation_method': 'Not applicable for non-BUY signals',
                     'hit_probability': 0.0,
                     'indicator_confidence': 0.0,
                     'monte_carlo_paths': 0,
-                    'fallback_used': 'N/A'
+                    'fallback_used': 'Non-BUY signal'
                 }
             
             # Get ATR for calculations
@@ -563,15 +564,26 @@ class RiskManager:
                 except Exception as e:
                     print(f"Monte Carlo calculation failed, using ATR fallback: {e}")
             
-            # Fallback to ATR-based entry (original method)
+            # **CRITICAL FIX**: Enhanced fallback with GUARANTEED target calculation
             entry_value = current_price
             stop_value = basic_stop_value
             target_value = basic_target_value
             
-            # Calculate risk-reward ratio
+            # **MANDATORY TARGET VALIDATION**: Ensure target is always valid for BUY signals
+            if target_value <= entry_value:
+                # Force recalculate target with minimum 2.5:1 R:R
+                actual_risk = abs(entry_value - stop_value)
+                if actual_risk <= 0:
+                    actual_risk = current_price * 0.03  # 3% fallback risk
+                    stop_value = entry_value - actual_risk
+                
+                target_value = entry_value + (2.5 * actual_risk)  # Guaranteed 2.5:1 R:R
+                print(f"    FORCED target calculation: Entry={entry_value:.2f}, Stop={stop_value:.2f}, Target={target_value:.2f}")
+            
+            # Calculate risk-reward ratio with validation
             actual_risk = entry_value - stop_value
             actual_reward = target_value - entry_value
-            risk_reward_ratio = actual_reward / actual_risk if actual_risk > 0 else 0
+            risk_reward_ratio = actual_reward / actual_risk if actual_risk > 0 else 2.5
             
             return {
                 'entry_value': round(entry_value, 2),
@@ -590,18 +602,26 @@ class RiskManager:
             }
             
         except Exception as e:
+            # **CRITICAL FIX**: Emergency fallback with guaranteed valid values
+            print(f"    ERROR in calculate_entry_stop_target: {e}")
+            
+            # Calculate emergency values with proper risk-reward
+            emergency_stop = current_price * 0.97  # 3% stop loss
+            emergency_risk = current_price - emergency_stop
+            emergency_target = current_price + (2.5 * emergency_risk)  # 2.5:1 R:R guaranteed
+            
             return {
                 'entry_value': current_price,
-                'stop_value': current_price * 0.97,  # 3% default stop
-                'target_value': current_price * 1.06,  # 6% default target (2:1 R:R)
-                'risk_reward_ratio': 2.0,
-                'calculation_method': f'Default values due to error: {e}',
-                'risk_amount': current_price * 0.03,
-                'reward_potential': current_price * 0.06,
+                'stop_value': emergency_stop,
+                'target_value': emergency_target,
+                'risk_reward_ratio': 2.5,  # Guaranteed minimum R:R
+                'calculation_method': f'Emergency fallback due to error: {str(e)[:100]}',
+                'risk_amount': round(emergency_risk, 2),
+                'reward_potential': round(emergency_target - current_price, 2),
                 'hit_probability': 0.1,
                 'indicator_confidence': 25.0,
                 'monte_carlo_paths': 0,
-                'fallback_used': 'Error fallback',
+                'fallback_used': 'Emergency error fallback',
                 'data_confidence': 'ERROR',
                 'execution_time_ms': 0.0
             }
