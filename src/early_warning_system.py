@@ -13,9 +13,10 @@ import os
 import time
 import argparse
 import sys
+from typing import Optional, Dict, Any, List
 
 class EarlyWarningSystem:
-    def __init__(self, custom_stocks=None, input_file=None, batch_size=50, timeout=10):
+    def __init__(self, custom_stocks=None, input_file=None, batch_size=50, timeout=5):
         # Default NSE symbols that work with Yahoo Finance
         self.default_stocks = [
             # Large Cap
@@ -134,10 +135,11 @@ class EarlyWarningSystem:
                 print(f"Warning: Insufficient data for {symbol}")
                 return None
                 
-            # Calculate RSI
-            delta = data['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            # Calculate RSI with explicit numeric handling
+            close_prices: pd.Series = data['Close'].astype(float)
+            delta: pd.Series = close_prices.diff()
+            gain: pd.Series = (delta.where(delta > 0, 0.0)).rolling(window=14).mean()
+            loss: pd.Series = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
             
             # Handle division by zero
             if loss.iloc[-1] == 0:
@@ -212,10 +214,11 @@ class EarlyWarningSystem:
             # Add legend
             ax1.legend(loc='upper left')
             
-            # RSI plot
-            delta = data['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            # RSI plot with explicit numeric handling
+            close_prices: pd.Series = data['Close'].astype(float)
+            delta: pd.Series = close_prices.diff()
+            gain: pd.Series = (delta.where(delta > 0, 0.0)).rolling(window=14).mean()
+            loss: pd.Series = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
             with np.errstate(divide='ignore', invalid='ignore'):
                 rs = gain / loss
                 rsi = 100 - (100 / (1 + rs))
@@ -295,10 +298,11 @@ class EarlyWarningSystem:
                 signal_volume = data.loc[signal_day, 'Volume']
                 volume_ratio = signal_volume / avg_volume_20
                 
-                # Calculate signal day's RSI
-                delta = data['Close'].loc[:signal_day].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                # Calculate signal day's RSI with explicit numeric handling
+                close_prices: pd.Series = data['Close'].loc[:signal_day].astype(float)
+                delta: pd.Series = close_prices.diff()
+                gain: pd.Series = (delta.where(delta > 0, 0.0)).rolling(window=14).mean()
+                loss: pd.Series = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
                 rs = gain / loss
                 rsi = 100 - (100 / (1 + rs))
                 signal_rsi = rsi.iloc[-1]
@@ -309,8 +313,13 @@ class EarlyWarningSystem:
                     future_date = data.index[-(i)]
                     future_price = data.loc[future_date, 'Close']
                     
-                    # Calculate performance
-                    performance = ((future_price - signal_price) / signal_price) * 100
+                    # Calculate performance with explicit numeric conversion
+                    signal_price_val = data.loc[signal_day, 'Close']
+                    future_price_val = data.loc[future_date, 'Close']
+                    if isinstance(signal_price_val, (int, float)) and isinstance(future_price_val, (int, float)):
+                        performance: float = ((future_price_val - signal_price_val) / signal_price_val) * 100
+                    else:
+                        performance: float = 0.0
                     
                     lookback_prices.append({
                         'Signal_Date': signal_day.strftime('%Y-%m-%d'),

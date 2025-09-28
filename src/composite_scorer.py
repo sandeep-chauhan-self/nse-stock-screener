@@ -6,22 +6,25 @@ Implements the probabilistic scoring framework (0-100) with weighted components
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Tuple, Optional
-from enum import Enum
 
-# Import market regime from enhanced_early_warning_system to ensure consistency
-# This avoids the "Error analyzing RELIANCE.NS: <MarketRegime.BULLISH: 'bullish'>" issue
-from enum import Enum
+# Import from our centralized constants and core with dual import strategy
+try:
+    # Try importing as module (when run from project root)
+    from src.constants import (
+        MarketRegime, SCORING_CONSTANTS, REGIME_ADJUSTMENTS,
+        ERROR_MESSAGES, SUCCESS_MESSAGES
+    )
+    from src.core import PerformanceUtils, DisplayUtils
+except ImportError:
+    # Fallback to direct imports (when run as script from src directory)
+    from constants import (
+        MarketRegime, SCORING_CONSTANTS, REGIME_ADJUSTMENTS,
+        ERROR_MESSAGES, SUCCESS_MESSAGES
+    )
+    from core import PerformanceUtils, DisplayUtils
 
-# Define the same enum for the same constants, but avoid circular imports
-# We'll make sure the values match those in enhanced_early_warning_system.py
-class MarketRegime(Enum):
-    """Market regime classification"""
-    BULLISH = "bullish"
-    BEARISH = "bearish"
-    SIDEWAYS = "sideways"
-    HIGH_VOLATILITY = "high_volatility"
-
-class ProbabilityLevel(Enum):
+class ProbabilityLevel:
+    """Probability level constants"""
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
     LOW = "LOW"
@@ -40,32 +43,11 @@ class CompositeScorer:
     """
     
     def __init__(self):
-        # Scoring weights (total = 100 base points)
-        self.weights = {
-            'volume': 25,
-            'momentum': 25,
-            'trend': 15,
-            'volatility': 10,
-            'relative_strength': 10,
-            'volume_profile': 10
-        }
-        
-        # Weekly confirmation bonus
-        self.weekly_bonus = 10
-        
-        # Probability thresholds
-        self.thresholds = {
-            'high': 70,
-            'medium': 45
-        }
-        
-        # Market regime adjustments
-        self.regime_adjustments = {
-            MarketRegime.BULLISH: {'rsi_min': 58, 'rsi_max': 82, 'vol_threshold': 2.5},
-            MarketRegime.SIDEWAYS: {'rsi_min': 60, 'rsi_max': 80, 'vol_threshold': 3.0},
-            MarketRegime.BEARISH: {'rsi_min': 62, 'rsi_max': 78, 'vol_threshold': 4.0},
-            MarketRegime.HIGH_VOLATILITY: {'rsi_min': 65, 'rsi_max': 75, 'vol_threshold': 5.0}  # Added for completeness
-        }
+        # Use centralized constants
+        self.weights = SCORING_CONSTANTS['COMPONENT_WEIGHTS']
+        self.weekly_bonus = self.weights['weekly_confirmation']
+        self.thresholds = SCORING_CONSTANTS['PROBABILITY_THRESHOLDS']
+        self.regime_adjustments = REGIME_ADJUSTMENTS
     
     def score_volume_component(self, indicators: Dict[str, Any], regime: MarketRegime = MarketRegime.SIDEWAYS) -> Tuple[int, Dict[str, Any]]:
         """
@@ -81,7 +63,7 @@ class CompositeScorer:
         
         # Get regime-adjusted thresholds
         regime_settings = self.regime_adjustments[regime]
-        vol_threshold = regime_settings['vol_threshold']
+        vol_threshold = regime_settings['volume_threshold']
         
         # Volume z-score scoring
         if not np.isnan(vol_z):
@@ -103,7 +85,8 @@ class CompositeScorer:
         
         # Volume ratio scoring (adjusted for regime)
         if not np.isnan(vol_ratio):
-            if vol_ratio >= vol_threshold * 1.67:  # 5x for neutral becomes ~8.3x for bear
+            extreme_multiplier = regime_settings.get("extreme_multiplier", 5.0)  # Fix: use proper multiplier
+            if vol_ratio >= vol_threshold * extreme_multiplier:
                 ratio_score = 10
                 breakdown['vol_ratio_level'] = 'EXTREME'
             elif vol_ratio >= vol_threshold:
@@ -493,9 +476,9 @@ class CompositeScorer:
         }
         
         # Determine probability level
-        if total_score >= self.thresholds['high']:
+        if total_score >= self.thresholds['HIGH']:
             probability = ProbabilityLevel.HIGH
-        elif total_score >= self.thresholds['medium']:
+        elif total_score >= self.thresholds['MEDIUM']:
             probability = ProbabilityLevel.MEDIUM
         else:
             probability = ProbabilityLevel.LOW
@@ -504,7 +487,7 @@ class CompositeScorer:
         result = {
             'symbol': indicators.get('symbol', 'UNKNOWN'),
             'composite_score': min(100, int(total_score)),  # Cap at 100
-            'probability_level': probability.value,
+            'probability_level': probability,
             'market_regime': regime.value,
             'component_scores': {
                 'volume': vol_score,
