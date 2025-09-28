@@ -802,7 +802,14 @@ class RiskManager:
                 'position_weight': 0.0,
                 'remaining_buying_power': self.current_capital,
                 'open_positions_count': len(self.positions)
-            }
+            },
+            # Default timing analysis values
+            'entry_timing': 'UNKNOWN',
+            'timing_confidence': 'UNKNOWN',
+            'timing_reason': reason,
+            'wait_probability': 0.0,
+            'suggested_wait_days': 0,
+            'spike_score': 0
         }
     
     def analyze_entry_timing(self, symbol: str, current_price: float, 

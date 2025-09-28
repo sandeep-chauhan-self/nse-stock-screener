@@ -225,12 +225,20 @@ class EnhancedEarlyWarningSystem:
                     'execution_time_ms': position_analysis.get('execution_time_ms', 0.0)
                 }
             else:
-                # For HOLD/AVOID signals, basic risk info
+                # For HOLD/AVOID signals, basic risk info but still include timing analysis
                 atr = indicators.get('atr', entry_price * 0.02)
                 stop_loss = entry_price - (2.0 * atr)
                 
                 can_enter, risk_reason, quantity, risk_amount = self.risk_manager.can_enter_position(
                     symbol, entry_price, stop_loss, scoring_result['composite_score']
+                )
+                
+                # Still perform entry timing analysis even for AVOID signals
+                entry_timing_analysis = self.risk_manager.analyze_entry_timing(
+                    symbol=symbol,
+                    current_price=entry_price,
+                    indicators=indicators,
+                    historical_data=historical_data
                 )
                 
                 risk_info = {
@@ -243,11 +251,28 @@ class EnhancedEarlyWarningSystem:
                     'target_value': None,
                     'risk_reward_ratio': None,
                     'position_size_pct': None,
-                    'max_loss_amount': None
+                    'max_loss_amount': None,
+                    # Include timing analysis even for AVOID signals
+                    'entry_timing': entry_timing_analysis['entry_timing'],
+                    'timing_confidence': entry_timing_analysis['timing_confidence'],
+                    'timing_reason': entry_timing_analysis['reason'],
+                    'wait_probability': entry_timing_analysis['wait_probability'],
+                    'suggested_wait_days': entry_timing_analysis['suggested_wait_days'],
+                    'spike_score': entry_timing_analysis['spike_score']
                 }
                 
-                # No duration estimate for non-BUY signals
+                # **FIXED**: Estimate duration for ALL signals where target exists
+                # For non-BUY signals, we may still want to estimate duration for theoretical targets
+                # or provide fallback duration based on volatility
                 duration_estimate = None
+                if risk_info.get('target_value') and risk_info['target_value'] > 0:
+                    # If target exists, estimate duration regardless of signal type
+                    duration_estimate = self.forecast_engine.estimate_duration(
+                        symbol, entry_price, risk_info['target_value'], indicators
+                    )
+                else:
+                    # Fallback: Estimate duration based on historical volatility even without target
+                    duration_estimate = self._estimate_fallback_duration(symbol, entry_price, indicators, historical_data)
             
             # **CRITICAL FIX**: Validate data integrity before returning
             risk_info = self._validate_and_fix_trade_data(risk_info, signal_result['signal'], symbol)
@@ -564,7 +589,7 @@ class EnhancedEarlyWarningSystem:
                         'Suggested_Wait_Days': result['risk_management'].get('suggested_wait_days', 0),
                         'Spike_Score': result['risk_management'].get('spike_score', 0),
                         'Duration_Days': (result['duration_estimate']['estimated_duration_days'] 
-                                        if result['duration_estimate'] and result['signal_info']['signal'] == 'BUY' 
+                                        if result['duration_estimate'] 
                                         else 'N/A'),
                         'RSI': result['key_indicators']['rsi'],
                         'ADX': result['key_indicators']['adx'],
@@ -649,7 +674,7 @@ class EnhancedEarlyWarningSystem:
                         'Suggested_Wait_Days': result['risk_management'].get('suggested_wait_days', 0),
                         'Spike_Score': result['risk_management'].get('spike_score', 0),
                         'Duration_Days': (result['duration_estimate']['estimated_duration_days'] 
-                                        if result['duration_estimate'] and result['signal_info']['signal'] == 'BUY' 
+                                        if result['duration_estimate'] 
                                         else 'N/A'),
                         'RSI': result['key_indicators']['rsi'],
                         'ADX': result['key_indicators']['adx'],
@@ -854,7 +879,7 @@ class EnhancedEarlyWarningSystem:
                     'Target': (f"₹{r['risk_management']['target_value']:.1f}" 
                              if r['risk_management']['target_value'] else 'N/A'),
                     'Duration': (f"{r['duration_estimate']['estimated_duration_days']:.0f}d" 
-                               if r['duration_estimate'] and r['signal_info']['signal'] == 'BUY' 
+                               if r['duration_estimate'] 
                                else 'N/A'),
                     'Vol_Ratio': f"{r['key_indicators']['volume_ratio']:.1f}x",
                     'RSI': f"{r['key_indicators']['rsi']:.1f}",
@@ -988,6 +1013,79 @@ class EnhancedEarlyWarningSystem:
         except Exception as e:
             print(f"Error running backtest: {e}")
             return None
+        
+    def _estimate_fallback_duration(self, symbol: str, current_price: float, 
+                                   indicators: Dict[str, Any], historical_data: Optional[pd.DataFrame]) -> Optional[Dict[str, Any]]:
+        """
+        **FIXED**: Provide fallback duration estimation based on historical volatility
+        when no specific target exists. This ensures duration estimates are available
+        for all stocks, providing better context for trading decisions.
+        """
+        try:
+            if historical_data is None or len(historical_data) < 20:
+                return {
+                    'estimated_duration_days': 21,  # Default 3 weeks
+                    'confidence': 0.1,
+                    'method_breakdown': {'Fallback': {'days': 21, 'confidence': 0.1}},
+                    'consensus_level': 'Low',
+                    'estimation_method': 'Default - insufficient data'
+                }
+            
+            # Calculate historical volatility
+            returns = historical_data['Close'].pct_change().dropna()
+            volatility = returns.std() * np.sqrt(252)  # Annualized volatility
+            
+            # Estimate typical price move based on volatility
+            # Higher volatility = faster moves, so shorter duration estimates
+            if volatility > 0.4:  # Very high volatility
+                estimated_days = 7  # 1 week
+                confidence = 0.3
+            elif volatility > 0.3:  # High volatility
+                estimated_days = 14  # 2 weeks
+                confidence = 0.4
+            elif volatility > 0.2:  # Medium volatility
+                estimated_days = 21  # 3 weeks
+                confidence = 0.5
+            elif volatility > 0.15:  # Low-medium volatility
+                estimated_days = 30  # 1 month
+                confidence = 0.4
+            else:  # Low volatility
+                estimated_days = 45  # 1.5 months
+                confidence = 0.3
+            
+            # Adjust based on ATR for more precision
+            atr = indicators.get('atr', current_price * 0.02)
+            atr_pct = atr / current_price if current_price > 0 else 0
+            
+            if atr_pct > 0.03:  # High ATR (volatile stock)
+                estimated_days = max(5, int(estimated_days * 0.8))  # Reduce by 20%
+            elif atr_pct < 0.01:  # Low ATR (stable stock)
+                estimated_days = int(estimated_days * 1.2)  # Increase by 20%
+            
+            # Cap at reasonable limits
+            estimated_days = min(90, max(3, estimated_days))
+            
+            return {
+                'estimated_duration_days': estimated_days,
+                'confidence': round(confidence, 2),
+                'method_breakdown': {
+                    'Volatility-based': {
+                        'days': estimated_days, 
+                        'confidence': round(confidence, 2)
+                    }
+                },
+                'consensus_level': 'Medium' if confidence >= 0.4 else 'Low',
+                'estimation_method': 'Fallback volatility-based'
+            }
+            
+        except Exception as e:
+            return {
+                'estimated_duration_days': 21,
+                'confidence': 0.1,
+                'method_breakdown': {'Error': {'days': 21, 'confidence': 0.1}},
+                'consensus_level': 'Low',
+                'estimation_method': f'Error: {str(e)}'
+            }
 
 def parse_arguments():
     """Parse command line arguments"""
