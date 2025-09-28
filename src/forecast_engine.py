@@ -8,8 +8,15 @@ import pandas as pd
 import yfinance as yf
 from typing import Dict, Any, Optional, Tuple
 
-from core import DataFetcher
-from constants import TRADING_CONSTANTS
+# Import from our centralized constants and core with dual import strategy
+try:
+    # Try importing as module (when run from project root)
+    from src.core import DataFetcher
+    from src.constants import TRADING_CONSTANTS
+except ImportError:
+    # Fallback to direct imports (when run as script from src directory)
+    from core import DataFetcher
+    from constants import TRADING_CONSTANTS
 
 class ForecastEngine:
     """

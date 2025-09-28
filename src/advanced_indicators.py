@@ -10,15 +10,27 @@ from typing import Dict, Optional, Tuple, Any
 import warnings
 warnings.filterwarnings('ignore')
 
-# Import our constants and core functionality
-from constants import (
-    INDICATOR_CONSTANTS, DATA_QUALITY_CONSTANTS, TRADING_CONSTANTS,
-    ERROR_MESSAGES, SUCCESS_MESSAGES
-)
-from core import (
-    DataFetcher, DataValidator, PerformanceUtils, get_weekly_data,
-    calculate_relative_strength
-)
+# Import our constants and core functionality with dual import strategy
+try:
+    # Try importing as module (when run from project root)
+    from src.constants import (
+        INDICATOR_CONSTANTS, DATA_QUALITY_CONSTANTS, TRADING_CONSTANTS,
+        ERROR_MESSAGES, SUCCESS_MESSAGES
+    )
+    from src.core import (
+        DataFetcher, DataValidator, PerformanceUtils, get_weekly_data,
+        calculate_relative_strength
+    )
+except ImportError:
+    # Fallback to direct imports (when run as script from src directory)
+    from constants import (
+        INDICATOR_CONSTANTS, DATA_QUALITY_CONSTANTS, TRADING_CONSTANTS,
+        ERROR_MESSAGES, SUCCESS_MESSAGES
+    )
+    from core import (
+        DataFetcher, DataValidator, PerformanceUtils, get_weekly_data,
+        calculate_relative_strength
+    )
 
 class AdvancedIndicator:
     """

@@ -7,12 +7,21 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Any, Tuple, Optional
 
-# Import from our centralized constants and core
-from constants import (
-    MarketRegime, SCORING_CONSTANTS, REGIME_ADJUSTMENTS,
-    ERROR_MESSAGES, SUCCESS_MESSAGES
-)
-from core import PerformanceUtils, DisplayUtils
+# Import from our centralized constants and core with dual import strategy
+try:
+    # Try importing as module (when run from project root)
+    from src.constants import (
+        MarketRegime, SCORING_CONSTANTS, REGIME_ADJUSTMENTS,
+        ERROR_MESSAGES, SUCCESS_MESSAGES
+    )
+    from src.core import PerformanceUtils, DisplayUtils
+except ImportError:
+    # Fallback to direct imports (when run as script from src directory)
+    from constants import (
+        MarketRegime, SCORING_CONSTANTS, REGIME_ADJUSTMENTS,
+        ERROR_MESSAGES, SUCCESS_MESSAGES
+    )
+    from core import PerformanceUtils, DisplayUtils
 
 class ProbabilityLevel:
     """Probability level constants"""

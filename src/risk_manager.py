@@ -11,12 +11,21 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-# Import from our centralized constants and core
-from constants import (
-    RISK_CONSTANTS, TRADING_CONSTANTS, ERROR_MESSAGES, SUCCESS_MESSAGES,
-    MONTE_CARLO_PARAMETERS, MarketRegime
-)
-from core import PerformanceUtils, DisplayUtils
+# Import from our centralized constants and core with dual import strategy
+try:
+    # Try importing as module (when run from project root)
+    from src.constants import (
+        RISK_CONSTANTS, TRADING_CONSTANTS, ERROR_MESSAGES, SUCCESS_MESSAGES,
+        MONTE_CARLO_PARAMETERS, MarketRegime
+    )
+    from src.core import PerformanceUtils, DisplayUtils
+except ImportError:
+    # Fallback to direct imports (when run as script from src directory)
+    from constants import (
+        RISK_CONSTANTS, TRADING_CONSTANTS, ERROR_MESSAGES, SUCCESS_MESSAGES,
+        MONTE_CARLO_PARAMETERS, MarketRegime
+    )
+    from core import PerformanceUtils, DisplayUtils
 
 class PositionStatus(Enum):
     OPEN = "open"
@@ -615,14 +624,21 @@ class RiskManager:
             # Step 3: Calculate stop and target based on final entry
             stop_value = entry_value - (self.config.stop_loss_atr_multiplier * atr)
             stop_value = max(stop_value, entry_value * 0.95)  # 5% max stop
-            
+
             # Target based on risk-reward ratio
             risk_amount = entry_value - stop_value
             target_value = entry_value + (2.5 * risk_amount)
-            
+
+            # CRITICAL FIX: Ensure target_value > entry_value for BUY signals
+            if signal == "BUY" and target_value <= entry_value:
+                # Force minimum target above entry (at least 1.5:1 risk-reward ratio)
+                min_target = entry_value + (risk_amount * 1.5)
+                target_value = max(target_value, min_target)
+                validation_message += f"Target adjusted to ensure minimum 1.5:1 R:R ratio; "
+
             # Use resistance level if available
             vp_resistance = indicators.get('vp_resistance_level')
-            if (vp_resistance and not np.isnan(vp_resistance) and 
+            if (vp_resistance and not np.isnan(vp_resistance) and
                 entry_value < vp_resistance < entry_value * 1.3):
                 target_value = min(target_value, vp_resistance * 0.99)
             
@@ -634,6 +650,18 @@ class RiskManager:
             # Validation checks
             validation_issues = []
             
+            # CRITICAL VALIDATION: Ensure positive R:R ratio for BUY signals
+            if signal == "BUY":
+                if risk_reward_ratio <= 0:
+                    # Emergency fix: set minimum 1.5:1 ratio
+                    target_value = entry_value + (actual_risk * 1.5)
+                    actual_reward = target_value - entry_value
+                    risk_reward_ratio = 1.5
+                    validation_message += f"Emergency R:R fix applied - set to 1.5:1; "
+                elif risk_reward_ratio < 1.0:
+                    # Warning for low R:R ratios
+                    validation_issues.append(f"Low R:R ratio ({risk_reward_ratio:.2f}:1) for BUY signal")
+            
             # Check if entry equals current price (anti-pattern)
             if abs(entry_value - current_price) < 0.01:
                 validation_issues.append("Entry equals current price")
@@ -641,9 +669,7 @@ class RiskManager:
             # Check RSI for BUY signals
             rsi = indicators.get('rsi', 50)
             if rsi > 75 and entry_method != 'BREAKOUT':
-                validation_issues.append(f"High RSI ({rsi:.1f}) without breakout entry")
-            
-            # Set validation flag
+                validation_issues.append(f"High RSI ({rsi:.1f}) without breakout entry")            # Set validation flag
             if validation_issues:
                 validation_flag = 'REVIEW' if len(validation_issues) == 1 else 'FAIL'
                 validation_message += f"Issues: {', '.join(validation_issues)}"

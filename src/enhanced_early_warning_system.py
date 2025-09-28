@@ -30,22 +30,38 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 # Import our centralized constants and core functionality
-from constants import (
-    MarketRegime, TRADING_CONSTANTS, RISK_CONSTANTS, DISPLAY_CONSTANTS,
-    ERROR_MESSAGES, SUCCESS_MESSAGES, FILE_CONSTANTS, PROJECT_ROOT_PATH
-)
-from core import (
-    StockLoader, DataFetcher, MarketRegimeDetector, PathManager,
-    DisplayUtils, RateLimiter
-)
-
-# Import our enhanced modules
-from advanced_indicators import AdvancedIndicator
-from composite_scorer import CompositeScorer
-from advanced_backtester import AdvancedBacktester, BacktestConfig
-from risk_manager import RiskManager, RiskConfig
-from signal_generator import SignalGenerator
-from forecast_engine import ForecastEngine
+try:
+    # Try importing as module (when run from project root)
+    from src.constants import (
+        MarketRegime, TRADING_CONSTANTS, RISK_CONSTANTS, DISPLAY_CONSTANTS,
+        ERROR_MESSAGES, SUCCESS_MESSAGES, FILE_CONSTANTS, PROJECT_ROOT_PATH
+    )
+    from src.core import (
+        StockLoader, DataFetcher, MarketRegimeDetector, PathManager,
+        DisplayUtils, RateLimiter
+    )
+    from src.advanced_indicators import AdvancedIndicator
+    from src.composite_scorer import CompositeScorer
+    from src.advanced_backtester import AdvancedBacktester, BacktestConfig
+    from src.risk_manager import RiskManager, RiskConfig
+    from src.signal_generator import SignalGenerator
+    from src.forecast_engine import ForecastEngine
+except ImportError:
+    # Fallback to direct imports (when run as script from src directory)
+    from constants import (
+        MarketRegime, TRADING_CONSTANTS, RISK_CONSTANTS, DISPLAY_CONSTANTS,
+        ERROR_MESSAGES, SUCCESS_MESSAGES, FILE_CONSTANTS, PROJECT_ROOT_PATH
+    )
+    from core import (
+        StockLoader, DataFetcher, MarketRegimeDetector, PathManager,
+        DisplayUtils, RateLimiter
+    )
+    from advanced_indicators import AdvancedIndicator
+    from composite_scorer import CompositeScorer
+    from advanced_backtester import AdvancedBacktester, BacktestConfig
+    from risk_manager import RiskManager, RiskConfig
+    from signal_generator import SignalGenerator
+    from forecast_engine import ForecastEngine
 
 class EnhancedEarlyWarningSystem:
     """Enhanced Early Warning System with advanced technical analysis"""
@@ -103,7 +119,12 @@ class EnhancedEarlyWarningSystem:
             print(f"Analyzing {symbol}...")
             
             # Get historical data for optimal entry calculation
-            from core import DataFetcher
+            try:
+                # Try importing as module (when run from project root)
+                from src.core import DataFetcher
+            except ImportError:
+                # Fallback to direct imports (when run as script from src directory)
+                from core import DataFetcher
             historical_data = DataFetcher.fetch_stock_data(symbol, period="1y")
             
             # Calculate historical price levels
@@ -140,7 +161,10 @@ class EnhancedEarlyWarningSystem:
             
             # Ensure the market regime is of the correct type for CompositeScorer
             # This handles the case when types don't match despite having the same values
-            from composite_scorer import MarketRegime as CSMarketRegime
+            try:
+                from src.composite_scorer import MarketRegime as CSMarketRegime
+            except ImportError:
+                from composite_scorer import MarketRegime as CSMarketRegime
             regime_name = self.market_regime.name
             cs_regime = CSMarketRegime[regime_name]
             
