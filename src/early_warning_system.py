@@ -13,7 +13,7 @@ import os
 import time
 import argparse
 import sys
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, cast
 
 class EarlyWarningSystem:
     def __init__(self, custom_stocks=None, input_file=None, batch_size=50, timeout=5):
@@ -106,8 +106,9 @@ class EarlyWarningSystem:
                 return None
                 
             # Calculate volume metrics
-            avg_volume_20 = data['Volume'].rolling(20).mean().iloc[-2]
-            current_volume = data['Volume'].iloc[-1]
+            volume_series = cast(pd.Series, data['Volume'])
+            avg_volume_20 = cast(pd.Series, volume_series.rolling(20).mean()).iloc[-2]
+            current_volume = volume_series.iloc[-1]
             volume_ratio = current_volume / avg_volume_20
             
             # Price change
@@ -136,24 +137,25 @@ class EarlyWarningSystem:
                 return None
                 
             # Calculate RSI with explicit numeric handling
-            close_prices: pd.Series = data['Close'].astype(float)
-            delta: pd.Series = close_prices.diff()
-            gain: pd.Series = (delta.where(delta > 0, 0.0)).rolling(window=14).mean()
-            loss: pd.Series = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
+            close_prices = cast(pd.Series, data['Close']).astype(float)
+            delta = cast(pd.Series, close_prices.diff())
+            gain = cast(pd.Series, (delta.where(delta > 0, 0.0)).rolling(window=14).mean())
+            loss = cast(pd.Series, (-delta.where(delta < 0, 0.0)).rolling(window=14).mean())
             
             # Handle division by zero
             if loss.iloc[-1] == 0:
                 current_rsi = 100
             else:
-                rs = gain / loss
-                rsi = 100 - (100 / (1 + rs))
+                rs = cast(pd.Series, gain / loss)
+                rsi = cast(pd.Series, 100 - (100 / (1 + rs)))
                 current_rsi = rsi.iloc[-1]
             
             # Calculate MACD
-            exp1 = data['Close'].ewm(span=12).mean()
-            exp2 = data['Close'].ewm(span=26).mean()
-            macd = exp1 - exp2
-            signal = macd.ewm(span=9).mean()
+            close_series = cast(pd.Series, data['Close'])
+            exp1 = cast(pd.Series, close_series.ewm(span=12).mean())
+            exp2 = cast(pd.Series, close_series.ewm(span=26).mean())
+            macd = cast(pd.Series, exp1 - exp2)
+            signal = cast(pd.Series, macd.ewm(span=9).mean())
             
             # Current values
             current_macd = macd.iloc[-1]
@@ -215,13 +217,13 @@ class EarlyWarningSystem:
             ax1.legend(loc='upper left')
             
             # RSI plot with explicit numeric handling
-            close_prices: pd.Series = data['Close'].astype(float)
-            delta: pd.Series = close_prices.diff()
-            gain: pd.Series = (delta.where(delta > 0, 0.0)).rolling(window=14).mean()
-            loss: pd.Series = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
+            close_prices = cast(pd.Series, data['Close']).astype(float)
+            delta = cast(pd.Series, close_prices.diff())
+            gain = cast(pd.Series, (delta.where(delta > 0, 0.0)).rolling(window=14).mean())
+            loss = cast(pd.Series, (-delta.where(delta < 0, 0.0)).rolling(window=14).mean())
             with np.errstate(divide='ignore', invalid='ignore'):
-                rs = gain / loss
-                rsi = 100 - (100 / (1 + rs))
+                rs = cast(pd.Series, gain / loss)
+                rsi = cast(pd.Series, 100 - (100 / (1 + rs)))
             
             ax2.plot(data.index, rsi, 'purple', label='RSI')
             ax2.axhline(y=70, color='r', linestyle='--', alpha=0.5)
@@ -231,10 +233,11 @@ class EarlyWarningSystem:
             ax2.set_ylim(0, 100)
             
             # MACD plot
-            exp1 = data['Close'].ewm(span=12, adjust=False).mean()
-            exp2 = data['Close'].ewm(span=26, adjust=False).mean()
-            macd = exp1 - exp2
-            signal = macd.ewm(span=9, adjust=False).mean()
+            close_series = cast(pd.Series, data['Close'])
+            exp1 = cast(pd.Series, close_series.ewm(span=12, adjust=False).mean())
+            exp2 = cast(pd.Series, close_series.ewm(span=26, adjust=False).mean())
+            macd = cast(pd.Series, exp1 - exp2)
+            signal = cast(pd.Series, macd.ewm(span=9, adjust=False).mean())
             
             ax3.plot(data.index, macd, 'b-', label='MACD')
             ax3.plot(data.index, signal, 'r-', label='Signal')
@@ -294,17 +297,18 @@ class EarlyWarningSystem:
                 signal_price = data.loc[signal_day, 'Close']
                 
                 # Calculate signal day's volume ratio
-                avg_volume_20 = data['Volume'].loc[:signal_day].rolling(20).mean().iloc[-2]
-                signal_volume = data.loc[signal_day, 'Volume']
+                volume_series = cast(pd.Series, data['Volume'].loc[:signal_day])
+                avg_volume_20 = cast(pd.Series, volume_series.rolling(20).mean()).iloc[-2]
+                signal_volume = cast(float, data.loc[signal_day, 'Volume'])
                 volume_ratio = signal_volume / avg_volume_20
                 
                 # Calculate signal day's RSI with explicit numeric handling
-                close_prices: pd.Series = data['Close'].loc[:signal_day].astype(float)
-                delta: pd.Series = close_prices.diff()
-                gain: pd.Series = (delta.where(delta > 0, 0.0)).rolling(window=14).mean()
-                loss: pd.Series = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
-                rs = gain / loss
-                rsi = 100 - (100 / (1 + rs))
+                close_prices = cast(pd.Series, data['Close'].loc[:signal_day]).astype(float)
+                delta = cast(pd.Series, close_prices.diff())
+                gain = cast(pd.Series, (delta.where(delta > 0, 0.0)).rolling(window=14).mean())
+                loss = cast(pd.Series, (-delta.where(delta < 0, 0.0)).rolling(window=14).mean())
+                rs = cast(pd.Series, gain / loss)
+                rsi = cast(pd.Series, 100 - (100 / (1 + rs)))
                 signal_rsi = rsi.iloc[-1]
                 
                 # Check if this would have been a signal
@@ -314,20 +318,19 @@ class EarlyWarningSystem:
                     future_price = data.loc[future_date, 'Close']
                     
                     # Calculate performance with explicit numeric conversion
-                    signal_price_val = data.loc[signal_day, 'Close']
-                    future_price_val = data.loc[future_date, 'Close']
-                    if isinstance(signal_price_val, (int, float)) and isinstance(future_price_val, (int, float)):
-                        performance: float = ((future_price_val - signal_price_val) / signal_price_val) * 100
-                    else:
-                        performance: float = 0.0
+                    signal_price_val = cast(float, data.loc[signal_day, 'Close'])
+                    future_price_val = cast(float, data.loc[future_date, 'Close'])
+                    perf_pct: float = ((future_price_val - signal_price_val) / signal_price_val) * 100 if isinstance(signal_price_val, (int, float)) and isinstance(future_price_val, (int, float)) else 0.0
                     
+                    sd_dt = signal_day.to_pydatetime() if isinstance(signal_day, pd.Timestamp) else signal_day
+                    fd_dt = future_date.to_pydatetime() if isinstance(future_date, pd.Timestamp) else future_date
                     lookback_prices.append({
-                        'Signal_Date': signal_day.strftime('%Y-%m-%d'),
+                        'Signal_Date': sd_dt.strftime('%Y-%m-%d') if isinstance(sd_dt, datetime) else str(sd_dt),
                         'Signal_Price': signal_price,
-                        'Future_Date': future_date.strftime('%Y-%m-%d'),
+                        'Future_Date': fd_dt.strftime('%Y-%m-%d') if isinstance(fd_dt, datetime) else str(fd_dt),
                         'Future_Price': future_price,
-                        'Performance_%': round(performance, 2),
-                        'Profit': 'Yes' if performance > 0 else 'No'
+                        'Performance_%': round(perf_pct, 2),
+                        'Profit': 'Yes' if perf_pct > 0 else 'No'
                     })
             
             if lookback_prices:

@@ -5,6 +5,7 @@ Compares current results with baseline to show reduction in current_price fallba
 """
 
 import pandas as pd
+from typing import Any, Dict, cast
 from pathlib import Path
 import sys
 
@@ -49,11 +50,11 @@ def analyze_hybrid_entry_improvements():
     entries_equal_current_pct = (entries_equal_current / total_buy_signals) * 100
 
     # Check for different entry methods
-    entry_methods = buy_signals['entry_method'].value_counts()
-    validation_flags = buy_signals['validation_flag'].value_counts()
+    entry_methods = cast(pd.Series, buy_signals.loc[:, 'entry_method']).value_counts()
+    validation_flags = cast(pd.Series, buy_signals.loc[:, 'validation_flag']).value_counts()
 
     # Check for strategic entries (not current price)
-    strategic_entries = buy_signals[buy_signals['entry_method'] != 'CURRENT_PRICE']
+    strategic_entries = cast(pd.DataFrame, buy_signals[buy_signals['entry_method'] != 'CURRENT_PRICE'])
     strategic_entries_pct = (len(strategic_entries) / total_buy_signals) * 100
 
     print("\n🎯 HYBRID ENTRY SYSTEM RESULTS:")
@@ -93,11 +94,18 @@ def analyze_hybrid_entry_improvements():
     # Show sample entries that are different
     if not strategic_entries.empty:
         print("\n💡 SAMPLE IMPROVED ENTRIES:")
-        sample = strategic_entries.head(3)[['Symbol', 'Current_Price', 'Optimal_Entry', 'entry_method', 'validation_flag']]
-        for _, row in sample.iterrows():
-            diff = row['Optimal_Entry'] - row['Current_Price']
-            print(f"   {row['Symbol']}: ₹{row['Current_Price']:.2f} → ₹{row['Optimal_Entry']:.2f} "
-                  f"(+₹{diff:.2f}) via {row['entry_method']} [{row['validation_flag']}]")
+        sample = strategic_entries.head(3).loc[:, ['Symbol', 'Current_Price', 'Optimal_Entry', 'entry_method', 'validation_flag']]
+        for row in sample.itertuples(index=False):
+            current_price = cast(float, getattr(row, 'Current_Price'))
+            optimal_entry = cast(float, getattr(row, 'Optimal_Entry'))
+            diff = optimal_entry - current_price
+            symbol = cast(str, getattr(row, 'Symbol'))
+            entry_method = cast(str, getattr(row, 'entry_method'))
+            validation_flag = cast(str, getattr(row, 'validation_flag'))
+            print(
+                f"   {symbol}: ₹{current_price:.2f} → ₹{optimal_entry:.2f} "
+                f"(+₹{diff:.2f}) via {entry_method} [{validation_flag}]"
+            )
 
     # Summary
     print("\n🏁 SUMMARY:")

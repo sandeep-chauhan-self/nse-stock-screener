@@ -8,8 +8,9 @@ import requests
 import pandas as pd
 import time
 import random
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 import yfinance as yf
+from typing import cast
 
 # File to save the stock symbols
 OUTPUT_FILE = "..\\data\\sample_stocks.txt"
@@ -134,11 +135,16 @@ def fetch_us_stocks():
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 table = soup.find('table', {'class': 'wikitable'})
+                if not isinstance(table, Tag):
+                    raise Exception("Could not find wikitable")
                 
                 symbols = []
-                for row in table.findAll('tr')[1:]:
-                    symbol = row.findAll('td')[0].text.strip()
-                    symbols.append(symbol)
+                rows = list(cast(Tag, table).find_all('tr')) if isinstance(table, Tag) else []
+                for row in rows[1:]:
+                    cells = cast(Tag, row).find_all('td') if isinstance(row, Tag) else []
+                    if cells:
+                        symbol = cells[0].get_text(strip=True)
+                        symbols.append(symbol)
                 
                 return symbols
             else:
@@ -217,16 +223,17 @@ def fetch_dow_jones():
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
-                tables = soup.findAll('table', {'class': 'wikitable'})
+                tables = list(soup.find_all('table', {'class': 'wikitable'}))
                 
                 # The table with the components
                 for table in tables:
-                    if 'Components' in table.text:
+                    if isinstance(table, Tag) and 'Components' in table.get_text():
                         symbols = []
-                        for row in table.findAll('tr')[1:]:
-                            cells = row.findAll('td')
+                        rows = list(cast(Tag, table).find_all('tr')) if isinstance(table, Tag) else []
+                        for row in rows[1:]:
+                            cells = cast(Tag, row).find_all('td') if isinstance(row, Tag) else []
                             if len(cells) >= 2:
-                                symbol = cells[1].text.strip()
+                                symbol = cells[1].get_text(strip=True)
                                 symbols.append(symbol)
                         return symbols
                 
@@ -276,16 +283,17 @@ def fetch_nasdaq_100():
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
-                tables = soup.findAll('table', {'class': 'wikitable'})
+                tables = list(soup.find_all('table', {'class': 'wikitable'}))
                 
                 # The table with the components
                 for table in tables:
-                    if 'Ticker symbol' in table.text:
+                    if isinstance(table, Tag) and 'Ticker symbol' in table.get_text():
                         symbols = []
-                        for row in table.findAll('tr')[1:]:
-                            cells = row.findAll('td')
+                        rows = list(cast(Tag, table).find_all('tr')) if isinstance(table, Tag) else []
+                        for row in rows[1:]:
+                            cells = cast(Tag, row).find_all('td') if isinstance(row, Tag) else []
                             if len(cells) >= 2:
-                                symbol = cells[1].text.strip()
+                                symbol = cells[1].get_text(strip=True)
                                 symbols.append(symbol)
                         return symbols
                 
@@ -361,16 +369,17 @@ def fetch_ftse_100():
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
-                tables = soup.findAll('table', {'class': 'wikitable'})
+                tables = list(soup.find_all('table', {'class': 'wikitable'}))
                 
                 # The table with the components
                 for table in tables:
-                    if 'Ticker' in table.text:
+                    if isinstance(table, Tag) and 'Ticker' in table.get_text():
                         symbols = []
-                        for row in table.findAll('tr')[1:]:
-                            cells = row.findAll('td')
+                        rows = list(cast(Tag, table).find_all('tr')) if isinstance(table, Tag) else []
+                        for row in rows[1:]:
+                            cells = cast(Tag, row).find_all('td') if isinstance(row, Tag) else []
                             if len(cells) >= 2:
-                                symbol = cells[1].text.strip() + ".L"  # Add .L suffix for London Stock Exchange
+                                symbol = cells[1].get_text(strip=True) + ".L"  # Add .L suffix for London Stock Exchange
                                 symbols.append(symbol)
                         return symbols
                 
@@ -391,14 +400,15 @@ def fetch_ftse_100():
                     soup = BeautifulSoup(response.content, 'html.parser')
                     table = soup.find('table', {'class': 'full-width'})
                     
-                    if table:
+                    if isinstance(table, Tag):
                         symbols = []
-                        rows = table.find('tbody').findAll('tr')
+                        tbody = table.find('tbody')
+                        rows = list(cast(Tag, tbody).find_all('tr')) if isinstance(tbody, Tag) else []
                         for row in rows:
-                            cells = row.findAll('td')
+                            cells = cast(Tag, row).find_all('td') if isinstance(row, Tag) else []
                             if len(cells) >= 2:
                                 ticker_cell = cells[1]
-                                symbol = ticker_cell.text.strip() + ".L"
+                                symbol = ticker_cell.get_text(strip=True) + ".L"
                                 symbols.append(symbol)
                         
                         if symbols:

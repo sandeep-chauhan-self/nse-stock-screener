@@ -6,7 +6,7 @@ Implements comprehensive technical analysis indicators for the upgraded stock sc
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any, cast
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -70,12 +70,12 @@ class AdvancedIndicator:
         if len(data) < period + 5:
             return {'bb_upper': np.nan, 'bb_lower': np.nan, 'bb_position': np.nan, 'bb_width': np.nan}
         
-        close = data['Close']
-        sma = close.rolling(period).mean()
-        std = close.rolling(period).std()
+        close = cast(pd.Series, data['Close'])
+        sma = cast(pd.Series, close.rolling(period).mean())
+        std = cast(pd.Series, close.rolling(period).std())
         
-        bb_upper = sma + (std * std_dev)
-        bb_lower = sma - (std * std_dev)
+        bb_upper = cast(pd.Series, sma + (std * std_dev))
+        bb_lower = cast(pd.Series, sma - (std * std_dev))
         
         current_price = close.iloc[-1]
         current_upper = bb_upper.iloc[-1]
@@ -107,19 +107,19 @@ class AdvancedIndicator:
         if len(data) < k_period + d_period:
             return {'stoch_k': np.nan, 'stoch_d': np.nan}
         
-        high = data['High']
-        low = data['Low']
-        close = data['Close']
+        high = cast(pd.Series, data['High'])
+        low = cast(pd.Series, data['Low'])
+        close = cast(pd.Series, data['Close'])
         
         # Calculate %K
-        lowest_low = low.rolling(k_period).min()
-        highest_high = high.rolling(k_period).max()
+        lowest_low = cast(pd.Series, low.rolling(k_period).min())
+        highest_high = cast(pd.Series, high.rolling(k_period).max())
         
-        stoch_k = 100 * (close - lowest_low) / (highest_high - lowest_low)
+        stoch_k = cast(pd.Series, 100 * (close - lowest_low) / (highest_high - lowest_low))
         stoch_k = stoch_k.fillna(50)  # Handle division by zero
         
         # Calculate %D (SMA of %K)
-        stoch_d = stoch_k.rolling(d_period).mean()
+        stoch_d = cast(pd.Series, stoch_k.rolling(d_period).mean())
         
         return {
             'stoch_k': round(stoch_k.iloc[-1], 2) if not np.isnan(stoch_k.iloc[-1]) else np.nan,
@@ -136,15 +136,15 @@ class AdvancedIndicator:
         if len(data) < period + 5:
             return {'williams_r': np.nan}
         
-        high = data['High']
-        low = data['Low']
-        close = data['Close']
+        high = cast(pd.Series, data['High'])
+        low = cast(pd.Series, data['Low'])
+        close = cast(pd.Series, data['Close'])
         
         # Calculate Williams %R
-        highest_high = high.rolling(period).max()
-        lowest_low = low.rolling(period).min()
+        highest_high = cast(pd.Series, high.rolling(period).max())
+        lowest_low = cast(pd.Series, low.rolling(period).min())
         
-        williams_r = -100 * (highest_high - close) / (highest_high - lowest_low)
+        williams_r = cast(pd.Series, -100 * (highest_high - close) / (highest_high - lowest_low))
         williams_r = williams_r.fillna(-50)  # Handle division by zero
         
         return {
@@ -162,16 +162,16 @@ class AdvancedIndicator:
             return {'cci': np.nan}
         
         # Typical Price
-        typical_price = (data['High'] + data['Low'] + data['Close']) / 3
+        typical_price = cast(pd.Series, (cast(pd.Series, data['High']) + cast(pd.Series, data['Low']) + cast(pd.Series, data['Close'])) / 3)
         
         # Simple Moving Average of Typical Price
-        sma_tp = typical_price.rolling(period).mean()
+        sma_tp = cast(pd.Series, typical_price.rolling(period).mean())
         
         # Mean Deviation
-        mad = typical_price.rolling(period).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=False)
+        mad = cast(pd.Series, typical_price.rolling(period).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=False))
         
         # CCI calculation
-        cci = (typical_price - sma_tp) / (0.015 * mad)
+        cci = cast(pd.Series, (typical_price - sma_tp) / (0.015 * mad))
         
         return {
             'cci': round(cci.iloc[-1], 2) if not np.isnan(cci.iloc[-1]) else np.nan
@@ -188,24 +188,24 @@ class AdvancedIndicator:
             return {'mfi': np.nan}
         
         # Typical Price
-        typical_price = (data['High'] + data['Low'] + data['Close']) / 3
+        typical_price = cast(pd.Series, (cast(pd.Series, data['High']) + cast(pd.Series, data['Low']) + cast(pd.Series, data['Close'])) / 3)
         
         # Money Flow
-        money_flow = typical_price * data['Volume']
+        money_flow = cast(pd.Series, typical_price * cast(pd.Series, data['Volume']))
         
         # Positive and Negative Money Flow
-        positive_mf = money_flow.where(typical_price > typical_price.shift(1), 0)
-        negative_mf = money_flow.where(typical_price < typical_price.shift(1), 0)
+        positive_mf = cast(pd.Series, money_flow.where(typical_price > typical_price.shift(1), 0))
+        negative_mf = cast(pd.Series, money_flow.where(typical_price < typical_price.shift(1), 0))
         
         # Money Flow Ratio
-        positive_mf_sum = positive_mf.rolling(period).sum()
-        negative_mf_sum = negative_mf.rolling(period).sum()
+        positive_mf_sum = cast(pd.Series, positive_mf.rolling(period).sum())
+        negative_mf_sum = cast(pd.Series, negative_mf.rolling(period).sum())
         
-        money_ratio = positive_mf_sum / negative_mf_sum
+        money_ratio = cast(pd.Series, positive_mf_sum / negative_mf_sum)
         money_ratio = money_ratio.replace([np.inf, -np.inf], 100)  # Handle division by zero
         
         # MFI
-        mfi = 100 - (100 / (1 + money_ratio))
+        mfi = cast(pd.Series, 100 - (100 / (1 + money_ratio)))
         
         return {
             'mfi': round(mfi.iloc[-1], 2) if not np.isnan(mfi.iloc[-1]) else np.nan
@@ -220,13 +220,13 @@ class AdvancedIndicator:
         if len(data) < 15:
             return {'roc_10': np.nan, 'price_momentum_5': np.nan}
         
-        close = data['Close']
+        close = cast(pd.Series, data['Close'])
         
         # Rate of Change (10-period)
-        roc_10 = ((close - close.shift(10)) / close.shift(10) * 100) if len(close) > 10 else pd.Series([np.nan])
+        roc_10 = cast(pd.Series, ((close - close.shift(10)) / close.shift(10) * 100)) if len(close) > 10 else pd.Series([np.nan])
         
         # Price momentum (5-period)
-        price_momentum_5 = (close - close.shift(5)) if len(close) > 5 else pd.Series([np.nan])
+        price_momentum_5 = cast(pd.Series, (close - close.shift(5))) if len(close) > 5 else pd.Series([np.nan])
         
         return {
             'roc_10': round(roc_10.iloc[-1], 2) if not roc_10.empty and not np.isnan(roc_10.iloc[-1]) else np.nan,
@@ -243,15 +243,15 @@ class AdvancedIndicator:
         if len(data) < 25:
             return {'vol_ratio': np.nan, 'vol_z': np.nan, 'vol_trend': np.nan}
         
-        volume = data['Volume']
+        volume = cast(pd.Series, data['Volume'])
         
         # Volume ratio (traditional)
-        vol_sma20 = volume.rolling(20).mean()
+        vol_sma20 = cast(pd.Series, volume.rolling(20).mean())
         vol_ratio = volume.iloc[-1] / vol_sma20.iloc[-1] if vol_sma20.iloc[-1] > 0 else np.nan
         
         # Volume z-score (statistical significance)
         vol_mean20 = vol_sma20.iloc[-1]
-        vol_std20 = volume.rolling(20).std().iloc[-1]
+        vol_std20 = cast(pd.Series, volume.rolling(20).std()).iloc[-1]
         vol_z = (volume.iloc[-1] - vol_mean20) / vol_std20 if vol_std20 > 0 else np.nan
         
         # Volume trend (5-day slope)
@@ -279,28 +279,28 @@ class AdvancedIndicator:
             return {'rsi': np.nan, 'macd': np.nan, 'macd_signal': np.nan, 
                    'macd_hist': np.nan, 'macd_strength': np.nan}
         
-        close = data['Close']
+        close = cast(pd.Series, data['Close'])
         
         # RSI (Wilder's method)
-        delta = close.diff()
-        up = delta.clip(lower=0)
-        down = -delta.clip(upper=0)
+        delta = cast(pd.Series, close.diff())
+        up = cast(pd.Series, delta.clip(lower=0))
+        down = cast(pd.Series, -delta.clip(upper=0))
         
         # Use Wilder's smoothing (alpha = 1/14)
         alpha = 1/14
-        up_ewm = up.ewm(alpha=alpha, adjust=False).mean()
-        down_ewm = down.ewm(alpha=alpha, adjust=False).mean()
+        up_ewm = cast(pd.Series, up.ewm(alpha=alpha, adjust=False).mean())
+        down_ewm = cast(pd.Series, down.ewm(alpha=alpha, adjust=False).mean())
         
-        rs = up_ewm / down_ewm
-        rsi = 100 - (100 / (1 + rs))
+        rs = cast(pd.Series, up_ewm / down_ewm)
+        rsi = cast(pd.Series, 100 - (100 / (1 + rs)))
         current_rsi = rsi.iloc[-1]
         
         # MACD (12, 26, 9)
-        exp12 = close.ewm(span=12, adjust=False).mean()
-        exp26 = close.ewm(span=26, adjust=False).mean()
-        macd_line = exp12 - exp26
-        signal_line = macd_line.ewm(span=9, adjust=False).mean()
-        histogram = macd_line - signal_line
+        exp12 = cast(pd.Series, close.ewm(span=12, adjust=False).mean())
+        exp26 = cast(pd.Series, close.ewm(span=26, adjust=False).mean())
+        macd_line = cast(pd.Series, exp12 - exp26)
+        signal_line = cast(pd.Series, macd_line.ewm(span=9, adjust=False).mean())
+        histogram = cast(pd.Series, macd_line - signal_line)
         
         current_macd = macd_line.iloc[-1]
         current_signal = signal_line.iloc[-1]
@@ -327,9 +327,9 @@ class AdvancedIndicator:
         if len(data) < 55:
             return {'adx': np.nan, 'ma20_slope': np.nan, 'ma50_slope': np.nan, 'ma_crossover': 0}
         
-        high = data['High']
-        low = data['Low']
-        close = data['Close']
+        high = cast(pd.Series, data['High'])
+        low = cast(pd.Series, data['Low'])
+        close = cast(pd.Series, data['Close'])
         
         # ADX calculation
         def calculate_adx(high, low, close, window=14):
@@ -349,25 +349,25 @@ class AdvancedIndicator:
             dm_minus = pd.Series(dm_minus, index=high.index)
             
             # Smoothed values
-            tr_smooth = tr.ewm(alpha=1/window, adjust=False).mean()
-            dm_plus_smooth = dm_plus.ewm(alpha=1/window, adjust=False).mean()
-            dm_minus_smooth = dm_minus.ewm(alpha=1/window, adjust=False).mean()
+            tr_smooth = cast(pd.Series, tr.ewm(alpha=1/window, adjust=False).mean())
+            dm_plus_smooth = cast(pd.Series, dm_plus.ewm(alpha=1/window, adjust=False).mean())
+            dm_minus_smooth = cast(pd.Series, dm_minus.ewm(alpha=1/window, adjust=False).mean())
             
             # Directional Indicators
-            di_plus = 100 * dm_plus_smooth / tr_smooth
-            di_minus = 100 * dm_minus_smooth / tr_smooth
+            di_plus = cast(pd.Series, 100 * dm_plus_smooth / tr_smooth)
+            di_minus = cast(pd.Series, 100 * dm_minus_smooth / tr_smooth)
             
             # ADX
-            dx = 100 * abs(di_plus - di_minus) / (di_plus + di_minus)
-            adx = dx.ewm(alpha=1/window, adjust=False).mean()
+            dx = cast(pd.Series, 100 * abs(di_plus - di_minus) / (di_plus + di_minus))
+            adx = cast(pd.Series, dx.ewm(alpha=1/window, adjust=False).mean())
             
             return adx.iloc[-1] if not adx.empty else np.nan
         
         current_adx = calculate_adx(high, low, close)
         
         # Moving averages and slopes
-        ma20 = close.rolling(20).mean()
-        ma50 = close.rolling(50).mean()
+        ma20 = cast(pd.Series, close.rolling(20).mean())
+        ma50 = cast(pd.Series, close.rolling(50).mean())
         
         # MA slopes (normalized by price)
         if len(ma20) >= 5:
@@ -403,9 +403,9 @@ class AdvancedIndicator:
         if len(data) < 20:
             return {'atr': np.nan, 'atr_pct': np.nan, 'atr_trend': np.nan}
         
-        high = data['High']
-        low = data['Low']
-        close = data['Close']
+        high = cast(pd.Series, data['High'])
+        low = cast(pd.Series, data['Low'])
+        close = cast(pd.Series, data['Close'])
         
         # True Range calculation
         tr1 = high - low
@@ -414,7 +414,7 @@ class AdvancedIndicator:
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         
         # ATR (14-period Wilder's smoothing)
-        atr = tr.ewm(alpha=1/14, adjust=False).mean()
+        atr = cast(pd.Series, tr.ewm(alpha=1/14, adjust=False).mean())
         current_atr = atr.iloc[-1]
         
         # ATR as percentage of price
@@ -446,7 +446,7 @@ class AdvancedIndicator:
             return {'rel_strength_20d': np.nan, 'rel_strength_50d': np.nan}
         
         # Align dates
-        stock_close = data['Close']
+        stock_close = cast(pd.Series, data['Close'])
         common_dates = stock_close.index.intersection(nifty_data.index)
         
         if len(common_dates) < period + 1:
@@ -454,7 +454,7 @@ class AdvancedIndicator:
         
         # Get aligned data
         stock_aligned = stock_close.loc[common_dates]
-        nifty_aligned = nifty_data['Close'].loc[common_dates]
+        nifty_aligned = cast(pd.Series, nifty_data['Close'].loc[common_dates])
         
         # 20-day relative strength
         if len(stock_aligned) >= period:
@@ -574,16 +574,16 @@ class AdvancedIndicator:
                 return {'weekly_rsi_trend': 0, 'weekly_macd_bullish': False, 'weekly_vol_trend': 0}
             
             # Weekly RSI
-            close = weekly_data['Close']
-            delta = close.diff()
-            up = delta.clip(lower=0)
-            down = -delta.clip(upper=0)
+            close = cast(pd.Series, weekly_data['Close'])
+            delta = cast(pd.Series, close.diff())
+            up = cast(pd.Series, delta.clip(lower=0))
+            down = cast(pd.Series, -delta.clip(upper=0))
             
-            up_ewm = up.ewm(alpha=1/14, adjust=False).mean()
-            down_ewm = down.ewm(alpha=1/14, adjust=False).mean()
+            up_ewm = cast(pd.Series, up.ewm(alpha=1/14, adjust=False).mean())
+            down_ewm = cast(pd.Series, down.ewm(alpha=1/14, adjust=False).mean())
             
-            rs = up_ewm / down_ewm
-            rsi = 100 - (100 / (1 + rs))
+            rs = cast(pd.Series, up_ewm / down_ewm)
+            rsi = cast(pd.Series, 100 - (100 / (1 + rs)))
             
             # RSI trend (positive if increasing over last 3 weeks)
             if len(rsi) >= 3:
@@ -592,15 +592,15 @@ class AdvancedIndicator:
                 rsi_trend = 0
             
             # Weekly MACD
-            exp12 = close.ewm(span=12, adjust=False).mean()
-            exp26 = close.ewm(span=26, adjust=False).mean()
-            macd_line = exp12 - exp26
-            signal_line = macd_line.ewm(span=9, adjust=False).mean()
+            exp12 = cast(pd.Series, close.ewm(span=12, adjust=False).mean())
+            exp26 = cast(pd.Series, close.ewm(span=26, adjust=False).mean())
+            macd_line = cast(pd.Series, exp12 - exp26)
+            signal_line = cast(pd.Series, macd_line.ewm(span=9, adjust=False).mean())
             
             macd_bullish = macd_line.iloc[-1] > signal_line.iloc[-1] if len(macd_line) > 0 else False
             
             # Weekly volume trend
-            volume = weekly_data['Volume']
+            volume = cast(pd.Series, weekly_data['Volume'])
             if len(volume) >= 4:
                 vol_trend = 1 if volume.tail(2).mean() > volume.iloc[-4:-2].mean() else 0
             else:

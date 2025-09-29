@@ -5,7 +5,7 @@ Implements the probabilistic scoring framework (0-100) with weighted components
 
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, cast
 
 # Import from our centralized constants and core with dual import strategy
 try:
@@ -410,11 +410,11 @@ class CompositeScorer:
         
         try:
             # Calculate NIFTY indicators
-            close = nifty_data['Close']
+            close = cast(pd.Series, nifty_data['Close'])
             
             # Check trend: 20-day MA vs 50-day MA
-            ma20 = close.rolling(20).mean().iloc[-1]
-            ma50 = close.rolling(50).mean().iloc[-1]
+            ma20 = cast(pd.Series, close.rolling(20).mean()).iloc[-1]
+            ma50 = cast(pd.Series, close.rolling(50).mean()).iloc[-1]
             
             # Check recent performance
             recent_return = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] * 100

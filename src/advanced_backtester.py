@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any, cast
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 import warnings
@@ -196,10 +196,17 @@ class AdvancedBacktester:
             net_return_pct = (net_profit / entry_value) * 100
             
             # Create trade result
+            safe_entry_date_ts = cast(pd.Timestamp, data.index[entry_idx + 1])
+            safe_entry_date = safe_entry_date_ts.to_pydatetime()
+            if isinstance(exit_date, pd.Timestamp):
+                safe_exit_date = exit_date.to_pydatetime()
+            else:
+                safe_exit_date = cast(datetime, exit_date)
+
             trade_result = TradeResult(
                 symbol=symbol,
-                entry_date=data.index[entry_idx + 1],
-                exit_date=exit_date,
+                entry_date=safe_entry_date,
+                exit_date=safe_exit_date,
                 entry_price=entry_price,
                 exit_price=exit_price,
                 quantity=quantity,
@@ -207,7 +214,7 @@ class AdvancedBacktester:
                 stop_loss=stop_loss,
                 take_profit=take_profit,
                 exit_reason=exit_reason,
-                days_held=(exit_date - data.index[entry_idx + 1]).days,
+                days_held=(safe_exit_date - safe_entry_date).days,
                 gross_return_pct=gross_return_pct,
                 net_return_pct=net_return_pct,
                 dollar_profit=net_profit,

@@ -17,7 +17,7 @@ import pandas as pd
 import math
 import hashlib
 import time
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, cast
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 import warnings
@@ -294,14 +294,14 @@ class OptimalEntryCalculator:
             rsi = 50  # Neutral default
             
             # Simple Bollinger Bands
-            sma = close.rolling(20).mean().iloc[-1]
-            std = close.rolling(20).std().iloc[-1]
+            sma = float(cast(pd.Series, close.rolling(20).mean()).iloc[-1])
+            std = float(cast(pd.Series, close.rolling(20).std()).iloc[-1])
             bb_upper = sma + 2 * std
             bb_lower = sma - 2 * std
             
             # Volume ratio
-            avg_volume = volume.rolling(20).mean().iloc[-1]
-            current_volume = volume.iloc[-1]
+            avg_volume = float(cast(pd.Series, volume.rolling(20).mean()).iloc[-1])
+            current_volume = float(volume.iloc[-1])
             vol_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
             
             return {
@@ -548,7 +548,7 @@ class OptimalEntryCalculator:
             tr3 = abs(low - close.shift(1))
             
             true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            atr = true_range.rolling(window=period).mean().iloc[-1]
+            atr = float(cast(pd.Series, true_range.rolling(window=period).mean()).iloc[-1])
             
             return atr if not np.isnan(atr) else data['Close'].iloc[-1] * 0.02
         except Exception:
@@ -566,11 +566,11 @@ class OptimalEntryCalculator:
                 hist_max = current_price * 1.5
             else:
                 # Calculate GBM parameters from historical data
-                returns = historical_data['Close'].pct_change().dropna()
-                mu = returns.mean()  # Daily drift
-                sigma = returns.std()  # Daily volatility
-                hist_min = historical_data['Low'].min()
-                hist_max = historical_data['High'].max()
+                returns = cast(pd.Series, historical_data['Close'].pct_change().dropna())
+                mu = float(returns.mean())  # Daily drift
+                sigma = float(returns.std())  # Daily volatility
+                hist_min = float(cast(pd.Series, historical_data['Low']).min())
+                hist_max = float(cast(pd.Series, historical_data['High']).max())
             
             # Cap volatility for stability
             vol_cap = self.config['volatility_cap']

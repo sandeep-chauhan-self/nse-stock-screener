@@ -8,7 +8,7 @@ import time
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, cast
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -176,13 +176,13 @@ class MarketRegimeDetector:
                 return MarketRegime.SIDEWAYS
             
             # Calculate regime indicators
-            close = data['Close']
+            close = cast(pd.Series, data['Close'])
             returns = close.pct_change().dropna()
             volatility = returns.std() * np.sqrt(252)  # Annualized volatility
             
             # Calculate trend (20-day vs 50-day MA)
-            ma20 = close.rolling(20).mean().iloc[-1]
-            ma50 = close.rolling(50).mean().iloc[-1]
+            ma20 = cast(pd.Series, close.rolling(20).mean()).iloc[-1]
+            ma50 = cast(pd.Series, close.rolling(50).mean()).iloc[-1]
             current_price = close.iloc[-1]
             
             # Recent momentum (last 10 days)
@@ -400,13 +400,13 @@ def get_weekly_data(symbol: str) -> Optional[pd.DataFrame]:
             return None
             
         # Resample to weekly data (Friday close)
-        weekly_data = data.resample('W-FRI').agg({
+        weekly_data = cast(pd.DataFrame, data.resample('W-FRI').agg({
             'Open': 'first',
             'High': 'max',
             'Low': 'min',
             'Close': 'last',
             'Volume': 'sum'
-        }).dropna()
+        }).dropna())
         
         return weekly_data
         

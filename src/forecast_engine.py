@@ -6,7 +6,7 @@ Estimates duration to reach target prices using multiple methodologies.
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, cast
 
 # Import from our centralized constants and core with dual import strategy
 try:
@@ -235,7 +235,7 @@ class ForecastEngine:
         
         # Lower confidence if estimates disagree significantly
         if duration_mean > 0:
-            agreement_factor = 1 - min(0.5, duration_std / duration_mean)
+            agreement_factor = 1 - min(0.5, float(duration_std) / float(duration_mean))
             final_confidence = avg_confidence * agreement_factor
         else:
             final_confidence = avg_confidence
@@ -268,7 +268,8 @@ class ForecastEngine:
             tr3 = abs(low - close.shift(1))
             
             true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            atr = true_range.rolling(window=period).mean().iloc[-1]
+            atr_series = cast(pd.Series, true_range.rolling(window=period).mean())
+            atr = float(atr_series.iloc[-1])
             
             return atr if not np.isnan(atr) else 0.0
             
